@@ -99,4 +99,11 @@ install.sh                     cài một lệnh: Command Line Tools, Mole, app,
 skills/                        skill mac-cleaner + mole (plugin Claude Code, manifest ở .claude-plugin/)
 hooks/                         hook xin duyệt: Claude phải hỏi trước khi dọn thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
 tests/test_maccleaner.py       unit test
+LICENSE                        MIT
 ```
+
+## Giấy phép
+
+[MIT](LICENSE): được dùng, sửa, phân phối lại (kể cả thương mại), miễn giữ nguyên thông báo bản quyền. Phần mềm cung cấp "nguyên trạng", không bảo hành.
+
+Mole không nằm trong repo hay file phát hành: `install.sh` tải bản chính thức của nó (giấy phép GPL-3.0, [tw93/mole](https://github.com/tw93/mole)) và mac-cleaner chỉ gọi lệnh `mo` như một chương trình riêng.

@@ -4,7 +4,7 @@
 #   ARCHS="arm64" ./scripts/make-app.sh   # một kiến trúc (nhanh hơn khi phát triển)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="1.4.0"
+VERSION="1.4.1"
 ARCHS="${ARCHS:-arm64 x86_64}"
 # Đổi đường dẫn tuyệt đối của máy build thành "." — binary phát hành không lộ username/thư mục.
 # (debug info bị `strip -S` bỏ hẳn bên dưới nên không cần -debug-prefix-map)
@@ -27,6 +27,7 @@ strip -S "$APP/Contents/MacOS/MacCleaner"   # bỏ debug stab (chứa đường 
 
 cp maccleaner.py "$APP/Contents/Resources/maccleaner.py"
 cp Web/board.html "$APP/Contents/Resources/Web/board.html"
+cp LICENSE "$APP/Contents/Resources/LICENSE"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -37,7 +38,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>MacCleaner</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleVersion</key><string>5</string>
+  <key>CFBundleVersion</key><string>6</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
