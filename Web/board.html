@@ -40,6 +40,16 @@ aside * { -webkit-app-region: no-drag; }
 .pitem .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pitem .n { font: 12px var(--mono); color: var(--faint); text-align: right; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+/* Cây mục lục */
+.tnode { display: flex; align-items: center; }
+.tnode .pitem { flex: 1; min-width: 0; }
+.caret { width: 18px; flex: none; color: var(--faint); display: grid; place-items: center; height: 30px; border-radius: 6px; }
+.caret svg { width: 10px; height: 10px; transition: transform .15s; }
+.caret[aria-expanded="true"] svg { transform: rotate(90deg); }
+button.caret:hover { color: var(--text); background: var(--hover); }
+.kids { margin: 0 0 4px 26px; border-left: 1px solid var(--line); padding-left: 6px; }
+.pitem.kid { padding: 6px 10px; font-size: 13px; }
+.pitem.kid .n { font-size: 11px; }
 .foot { border-top: 1px solid var(--line); padding: 14px 8px 0; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--faint); }
 .foot div { flex: 1; }
 /* Terminal log */
@@ -75,11 +85,21 @@ h1 { font-size: 26px; margin: 6px 0 4px; letter-spacing: -.02em; }
 .btn:hover { background: var(--hover); }
 .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
 .btn.danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn.danger-line { color: var(--red); border-color: rgba(248, 113, 113, .45); }
+.btn.danger-line:hover { background: rgba(248, 113, 113, .1); }
+.hbtns { display: flex; gap: 8px; justify-content: flex-end; }
 .updated { font-size: 11px; color: var(--faint); text-align: right; margin-top: 4px; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; position: relative; overflow: hidden; }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
-.kpi { padding: 18px 20px; min-height: 150px; }
+.kpi { padding: 18px 20px; min-height: 150px; cursor: pointer; transition: border-color .15s; }
+.kpi:hover { border-color: var(--line2); }
+.kpi.on { box-shadow: inset 0 0 0 1px var(--dim); }
+h3.click { cursor: pointer; } h3.click:hover { text-decoration: underline; }
+#tablecard.flash { animation: flash 1.2s ease; }
+@keyframes flash { 0% { box-shadow: 0 0 0 2px var(--green); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 10px; }
+.filters:empty { display: none; }
 .kpi .k { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
 .kpi .v { font: 500 30px var(--mono); margin-top: 10px; letter-spacing: -.02em; white-space: nowrap; }
 .kpi .vs { color: var(--faint); font-size: 12px; margin-top: 2px; }
@@ -118,6 +138,12 @@ td.ra button:hover:not(:disabled) { background: var(--card2); color: var(--text)
 td.ra button.del:hover:not(:disabled) { color: var(--red); }
 td.ra button:disabled { opacity: .28; cursor: not-allowed; }
 td.ra svg { width: 15px; height: 15px; }
+.mini { width: 28px; height: 28px; border-radius: 7px; color: var(--faint); display: inline-grid; place-items: center; flex: none; }
+.mini:hover:not(:disabled) { background: var(--card2); color: var(--text); }
+.mini.del:hover:not(:disabled) { color: var(--red); }
+.mini:disabled { opacity: .28; cursor: not-allowed; }
+.mini svg { width: 15px; height: 15px; }
+.warn.hot { background: rgba(248, 113, 113, .1); color: var(--red); }
 .warn { margin: 14px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: rgba(251, 191, 36, .08); color: var(--amber); }
 .ack { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--dim); margin: 10px 0 4px; }
 tbody tr:hover { background: var(--hover); }
@@ -192,7 +218,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
     <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 19l4-9 4 6 2-3 3 6" fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     mac cleaner
   </div>
-  <div class="label">Nhóm</div>
+  <div class="label">Mục lục</div>
   <nav class="plist" id="plist"></nav>
   <div class="foot">
     <div>Report<br><span id="gen" class="num"></span></div>
@@ -213,8 +239,11 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
       <button data-f="all" class="on">Tất cả</button><button data-f="safe">Dọn an toàn</button><button data-f="review">Cân nhắc</button><button data-f="info">Kiểm kê</button>
     </div>
     <div>
-      <button class="btn" id="logbtn" title="Terminal log (⌘L)">Log</button>
-      <button class="btn" id="rescan">Quét lại</button>
+      <div class="hbtns">
+        <button class="btn" id="logbtn" title="Terminal log (⌘L)">Log</button>
+        <button class="btn" id="rescan">Quét lại</button>
+        <button class="btn danger-line" id="delall" title="Xoá mọi mục đang hiện trong bảng (theo nhóm và bộ lọc hiện tại)">Xoá toàn bộ</button>
+      </div>
       <div class="updated" id="updated"></div>
     </div>
   </header>
@@ -234,12 +263,13 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
     </section>
   </div>
 
-  <section class="card" style="margin-bottom:16px">
+  <section class="card" style="margin-bottom:16px" id="tablecard">
     <div class="box-head">
       <h3 id="tabletitle">Tất cả mục <span id="icount"></span></h3>
       <button class="btn" id="selall">Chọn mục an toàn</button>
       <label class="search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="Tìm tên, app, đường dẫn" aria-label="Tìm kiếm"></label>
     </div>
+    <div class="filters" id="filters"></div>
     <div class="chips" id="kinds"></div>
     <div class="scroll">
       <table>
@@ -251,14 +281,14 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
   </section>
 
   <div class="grid3">
-    <section class="card"><div class="box-head"><h3>App chiếm cache <span id="ocount"></span></h3></div><div class="box-sub">cache + log + container, gộp theo app</div><div class="list" id="owners"></div></section>
-    <section class="card"><div class="box-head"><h3>Git repos <span id="gcount"></span></h3></div><div class="box-sub">repo có thay đổi chưa commit lên đầu</div><div class="list" id="repos"></div></section>
-    <section class="card"><div class="box-head"><h3>Plugin theo app <span id="pcount"></span></h3></div><div class="box-sub">app extension (pluginkit) + plug-in cài thêm</div><div class="list" id="plugs"></div></section>
+    <section class="card"><div class="box-head"><h3 class="click" data-goto="caches">App chiếm cache <span id="ocount"></span></h3></div><div class="box-sub">cache + log + container, gộp theo app</div><div class="list" id="owners"></div></section>
+    <section class="card"><div class="box-head"><h3 class="click" data-goto="git:repo">Git repos <span id="gcount"></span></h3></div><div class="box-sub">repo có thay đổi chưa commit lên đầu</div><div class="list" id="repos"></div></section>
+    <section class="card"><div class="box-head"><h3 class="click" data-goto="plugins">Plugin theo app <span id="pcount"></span></h3></div><div class="box-sub">app extension (pluginkit) + plug-in cài thêm</div><div class="list" id="plugs"></div></section>
   </div>
 </div></main>
 
 <div id="selbar"><div class="t"><b id="selsize">0</b> · <span id="selcount">0 mục</span></div>
-  <button class="btn" id="selclear">Bỏ chọn</button><button class="btn" id="preview">Xem trước</button><button class="btn danger" id="doclean">Dọn → Thùng rác</button></div>
+  <button class="btn" id="selclear">Bỏ chọn</button><button class="btn" id="preview">Xem trước</button><button class="btn danger" id="doclean">Xoá → Thùng rác</button></div>
 <section class="term" id="term" aria-label="Terminal log">
   <div class="bar"><b>Terminal log</b><span id="termstat"></span><span class="fill"></span>
     <button class="btn" id="termcopy">Copy</button><button class="btn" id="termclear">Xoá</button>
@@ -279,14 +309,25 @@ const CATS = [
   { key: 'junk', label: 'Junk', color: '#f472b6' },
 ];
 const SAFETY = { safe: 'an toàn', review: 'cân nhắc', info: 'kiểm kê', protected: 'bảo vệ' };
+const KIND = {
+  app: 'Ứng dụng', 'app-extension': 'App extension', 'system-extension': 'System extension', editor: 'Extension editor',
+  browser: 'Extension trình duyệt', binary: 'Git binary', repo: 'Git repo', 'user-cache': 'Cache người dùng', log: 'Log',
+  'container-cache': 'Cache container', 'system-cache': 'Cache hệ thống', 'xcode-deriveddata': 'Xcode DerivedData',
+  'device-support': 'iOS DeviceSupport', 'xcode-archive': 'Xcode Archive', 'simulator-unavailable': 'Simulator hỏng',
+  'dev-cache': 'Cache công cụ dev', 'build-artifact': 'Build artifact', installer: 'File cài đặt', 'backup-old': 'Backup cũ',
+  'backup-latest': 'Backup mới nhất', 'app-leftover': 'Sót lại của app đã gỡ', 'agent-leftover': 'LaunchAgent mồ côi', trash: 'Thùng rác',
+};
+const kindLabel = k => KIND[k] || k;
 const PAGE = 300;
-const S = { data: null, cat: null, f: 'all', kind: null, q: '', sel: new Set(), limit: PAGE, busy: false };
+const S = { data: null, cat: null, f: 'all', kind: null, owner: null, q: '', sel: new Set(), limit: PAGE, busy: false,
+            open: new Set(), bulk: null, lastIds: null, lastForce: false };
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const post = msg => window.webkit?.messageHandlers?.cleaner?.postMessage(msg);
 const inApp = () => !!window.webkit?.messageHandlers?.cleaner;
 const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
 const sum = (a, f) => a.reduce((x, y) => x + (f(y) || 0), 0);
+const bySize = (a, b) => (b.size || 0) - (a.size || 0);
 function fSize(n) {
   if (n == null) return '—';
   const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
@@ -295,35 +336,77 @@ function fSize(n) {
 }
 const fWhen = t => new Date(t).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
 const catOf = k => CATS.find(c => c.key === k) || { label: k, color: '#888' };
+const ownerOf = i => i.owner || '—';
+/// "Dọn được" theo khuyến nghị (safe/review). Mục khác vẫn xoá được nếu người dùng chọn đích danh (forced → --force).
 const cleanable = i => i.safety === 'safe' || i.safety === 'review';
-const whyNot = i => i.safety === 'protected' ? 'Được bảo vệ — không dọn' + (i.note ? ' (' + i.note + ')' : '') : 'Chỉ kiểm kê — không dọn được';
+const forced = i => !cleanable(i);
+// Giống hard_deny() của maccleaner.py — chỗ macOS khoá (SIP) hoặc thư mục gốc: không xoá được, kể cả đích danh.
+const SIP = ['/System/', '/usr/', '/bin/', '/sbin/', '/private/var/db/', '/Library/Apple/'];
+const HOME_DIRS = new Set(['Library', 'Documents', 'Desktop', 'Downloads', 'Applications', 'Movies', 'Music', 'Pictures', 'Public']);
+function locked(i) {
+  if (i.kind === 'trash') return '';
+  const p = i.path || '', home = S.data?.home || '';
+  if (SIP.some(r => p.startsWith(r)) && !p.startsWith('/usr/local/')) return 'Thuộc hệ thống macOS (SIP khoá) — không xoá được';
+  if (p.split('/').filter(Boolean).length < 2 || p === home || home.startsWith(p + '/')) return 'Thư mục gốc — không xoá';
+  if (home && p.startsWith(home + '/') && HOME_DIRS.has(p.slice(home.length + 1))) return 'Thư mục chuẩn của macOS — không xoá';
+  return '';
+}
+const deletable = i => !locked(i);
+/// Cảnh báo cho mục ngoài khuyến nghị dọn, theo loại.
+function warnFor(i) {
+  if (i.kind === 'trash') return 'Đổ Thùng rác: xoá VĨNH VIỄN mọi thứ trong Thùng rác, không khôi phục được. macOS có thể hỏi quyền cho Mac Cleaner điều khiển Finder.';
+  if (i.kind === 'app') return 'Ứng dụng sẽ vào Thùng rác (gỡ app). Cache và dữ liệu của app vẫn còn — muốn gỡ sạch dùng `mo uninstall`. App cài bằng quyền admin có thể báo lỗi quyền.';
+  if (i.kind === 'repo') return `Cả thư mục repo vào Thùng rác${i.dirty ? ` — đang có ${i.dirty} file thay đổi chưa commit` : ''}. Code chưa push sẽ mất khi đổ Thùng rác.`;
+  if (i.kind === 'binary') return 'Xoá file chương trình git này — công cụ đang dùng nó sẽ lỗi.';
+  if (i.category === 'plugins') return 'Plugin nằm trong bundle của app khác thì xoá có thể làm app đó lỗi chữ ký, không mở được.';
+  if (i.category === 'extensions') return 'Extension bị gỡ khỏi editor/trình duyệt; nếu đang bật đồng bộ, app có thể tự cài lại.';
+  if (i.kind === 'backup-latest') return 'Đây là bản backup MỚI NHẤT của file này.';
+  if (i.safety === 'protected') return 'Mục được bảo vệ (dữ liệu app, khoá, cấu hình…) — chỉ xoá khi chắc chắn.';
+  return 'Mục này chỉ để kiểm kê, không nằm trong danh sách khuyến nghị dọn.';
+}
 const ICON = {
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>'
 };
+const delTitle = i => locked(i) || (i.kind === 'trash' ? 'Đổ Thùng rác…' : forced(i) ? 'Xoá (mục kiểm kê — cần xác nhận)…' : 'Xoá (chuyển vào Thùng rác)…');
+const delBtn = (i, cls = 'mini') => `<button class="${cls} del" data-del="${i.id}" ${deletable(i) ? '' : 'disabled'} title="${esc(delTitle(i))}" aria-label="Xoá ${esc(i.name)}">${ICON.trash}</button>`;
+const infoBtn = (i, cls = 'mini') => `<button class="${cls}" data-info="${i.id}" title="Chi tiết" aria-label="Chi tiết ${esc(i.name)}">${ICON.info}</button>`;
 const byId = {};
 
 function view() {
   const q = S.q.trim().toLowerCase();
   return S.data.items.filter(i => (!S.cat || i.category === S.cat) && (S.f === 'all' || i.safety === S.f || (S.f === 'info' && i.safety === 'protected'))
-    && (!S.kind || i.kind === S.kind) && (!q || `${i.name} ${i.owner} ${i.path} ${i.version} ${i.note}`.toLowerCase().includes(q)));
+    && (!S.kind || i.kind === S.kind) && (S.owner == null || ownerOf(i) === S.owner)
+    && (!q || `${i.name} ${i.owner} ${i.path} ${i.version} ${i.note} ${kindLabel(i.kind)}`.toLowerCase().includes(q)));
 }
 
+// ---------- Cây mục lục ----------
 function renderSide() {
   const it = S.data.items;
-  const row = (key, label, color, list) => `<button class="pitem ${S.cat === key ? 'on' : ''}" data-c="${key ?? ''}">
-    ${color ? `<span class="dot" style="background:${color}"></span>` : ''}<span class="name">${label}</span>
-    <span class="n">${list.length}<br>${fSize(sum(list.filter(cleanable), i => i.size))}</span></button>`;
-  $('#plist').innerHTML = row(null, 'Tổng quan', '', it) + CATS.map(c => row(c.key, c.label, c.color, it.filter(i => i.category === c.key))).join('');
+  const stat = list => `<span class="n">${list.length}<br>${fSize(sum(list, i => i.size))}</span>`;
+  let h = `<button class="pitem ${!S.cat ? 'on' : ''}" data-c=""><span class="caret"></span><span class="name">Tổng quan</span>${stat(it)}</button>`;
+  for (const c of CATS) {
+    const list = it.filter(i => i.category === c.key), open = S.open.has(c.key);
+    h += `<div class="tnode"><button class="caret" data-tog="${c.key}" aria-expanded="${open}" aria-label="${open ? 'Thu gọn' : 'Mở'} ${c.label}"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 2l3 3-3 3"/></svg></button>
+      <button class="pitem ${S.cat === c.key && !S.kind ? 'on' : ''}" data-c="${c.key}"><span class="dot" style="background:${c.color}"></span><span class="name">${c.label}</span>${stat(list)}</button></div>`;
+    if (open) {
+      const kinds = {};
+      for (const i of list) (kinds[i.kind] ||= []).push(i);
+      h += '<div class="kids">' + Object.entries(kinds).sort((a, b) => sum(b[1], i => i.size) - sum(a[1], i => i.size) || b[1].length - a[1].length)
+        .map(([k, l]) => `<button class="pitem kid ${S.cat === c.key && S.kind === k ? 'on' : ''}" data-ck="${c.key}|${esc(k)}" title="${esc(kindLabel(k))}"><span class="name">${esc(kindLabel(k))}</span>${stat(l)}</button>`).join('')
+        + (list.length ? '' : '<div class="pitem kid" style="cursor:default">trống</div>') + '</div>';
+    }
+  }
+  $('#plist').innerHTML = h;
   $('#gen').textContent = fWhen(S.data.generatedAt);
 }
 
 function renderHeader() {
-  const name = S.cat ? catOf(S.cat).label : 'Tổng quan';
-  $('#crumb').textContent = name; $('#title').textContent = name;
+  const name = S.cat ? catOf(S.cat).label + (S.kind ? ' › ' + kindLabel(S.kind) : '') : 'Tổng quan';
+  $('#crumb').textContent = name; $('#title').textContent = S.kind ? kindLabel(S.kind) : (S.cat ? catOf(S.cat).label : 'Tổng quan');
   const d = S.data.disk;
   $('#sub').textContent = `${S.data.host} · đĩa dùng ${fSize(d.used)} / ${fSize(d.total)}, trống ${fSize(d.free)} · quét ${S.data.items.length} mục trong ${S.data.seconds}s`;
-  $('#updated').textContent = inApp() ? 'Quét lúc ' + fWhen(S.data.generatedAt) : 'Report tĩnh · dọn bằng lệnh được copy';
+  $('#updated').textContent = inApp() ? 'Quét lúc ' + fWhen(S.data.generatedAt) : 'Report tĩnh · xoá bằng lệnh được copy';
   document.querySelectorAll('#safety button').forEach(b => b.classList.toggle('on', b.dataset.f === S.f));
   setBusy(S.busy);
 }
@@ -331,16 +414,16 @@ function renderHeader() {
 // ---------- Terminal log ----------
 const LOG = [], LOG_MAX = 3000;
 function setBusy(on) {
-  $('#rescan').disabled = on;
-  $('#rescan').innerHTML = on ? '<span class="busy"></span>Đang quét…' : 'Quét lại';
+  $('#rescan').disabled = on; $('#delall').disabled = on;
+  $('#rescan').innerHTML = on ? '<span class="busy"></span>Đang chạy…' : 'Quét lại';
   $('#logbtn').classList.toggle('live', on);
   $('#termstat').innerHTML = on ? '<span class="busy"></span> đang chạy' : '';
 }
 function setTerm(on) { $('#term').classList.toggle('on', on); document.body.classList.toggle('term-open', on); store.set('term', on ? '1' : '0'); }
 function logClass(l) {
   if (l.startsWith('$ ')) return 'cmd';
-  if (/^\s*✗|Traceback|Error|lỗi/i.test(l)) return 'err';
-  if (/^\s*✓/.test(l)) return 'ok';
+  if (/^\s*✗|Traceback|Error|lỗi|\[error|\[skip/i.test(l)) return 'err';
+  if (/^\s*✓|\[ok/.test(l)) return 'ok';
   return l.startsWith('▸') ? 's' : '';
 }
 window.log = line => {
@@ -361,21 +444,21 @@ function renderKpis() {
   const safe = sum(it.filter(i => i.safety === 'safe'), i => i.size), review = sum(it.filter(i => i.safety === 'review'), i => i.size);
   const pct = v => (v / d.total * 100).toFixed(2) + '%';
   const k = [
-    { label: 'Đĩa trống', color: '#60a5fa', v: fSize(d.free), vs: `${(d.used / d.total * 100).toFixed(0)}% đã dùng của ${fSize(d.total)}`,
+    { f: 'all', label: 'Đĩa trống', color: '#60a5fa', v: fSize(d.free), vs: `${(d.used / d.total * 100).toFixed(0)}% đã dùng của ${fSize(d.total)}`,
       meter: `<i style="width:${pct(d.used - safe - review)};background:var(--faint)"></i><i style="width:${pct(safe)};background:var(--green)"></i><i style="width:${pct(review)};background:var(--amber)"></i>` },
-    { label: 'Dọn an toàn', color: '#4ade80', v: fSize(safe), vs: `${it.filter(i => i.safety === 'safe').length} mục · cache, log, backup cũ`,
+    { f: 'safe', label: 'Dọn an toàn', color: '#4ade80', v: fSize(safe), vs: `${it.filter(i => i.safety === 'safe').length} mục · cache, log, backup cũ`,
       meter: `<i style="width:${Math.min(100, safe / Math.max(d.free, 1) * 100)}%;background:var(--green)"></i>` },
-    { label: 'Cân nhắc', color: '#fbbf24', v: fSize(review), vs: `${it.filter(i => i.safety === 'review').length} mục · build artifact, installer…`,
+    { f: 'review', label: 'Cân nhắc', color: '#fbbf24', v: fSize(review), vs: `${it.filter(i => i.safety === 'review').length} mục · build artifact, installer…`,
       meter: `<i style="width:${Math.min(100, review / Math.max(d.free, 1) * 100)}%;background:var(--amber)"></i>` },
-    { label: 'Đã kiểm kê', color: '#818cf8', v: it.length.toLocaleString('vi-VN'), vs: CATS.map(c => `${S.data.items.filter(i => i.category === c.key).length} ${c.label.toLowerCase()}`).slice(0, 4).join(' · '),
+    { f: 'info', label: 'Đã kiểm kê', color: '#818cf8', v: it.length.toLocaleString('vi-VN'), vs: CATS.map(c => `${S.data.items.filter(i => i.category === c.key).length} ${c.label.toLowerCase()}`).slice(0, 4).join(' · '),
       meter: CATS.map(c => `<i style="width:${S.data.items.filter(i => i.category === c.key).length / S.data.items.length * 100}%;background:${c.color}"></i>`).join('') },
   ];
-  $('#kpis').innerHTML = k.map(x => `<div class="card kpi"><div class="k"><span class="dot" style="background:${x.color}"></span>${x.label}</div>
+  $('#kpis').innerHTML = k.map(x => `<div class="card kpi ${S.f === x.f && x.f !== 'all' ? 'on' : ''}" data-kf="${x.f}" role="button" tabindex="0" title="Xem các mục: ${x.label.toLowerCase()}"><div class="k"><span class="dot" style="background:${x.color}"></span>${x.label}</div>
     <div class="v">${x.v}</div><div class="vs">${esc(x.vs)}</div><div class="meter">${x.meter}</div></div>`).join('');
 }
 
 function renderBars() {
-  const groups = S.cat ? [...new Set(S.data.items.filter(i => i.category === S.cat).map(i => i.kind))].map(k => ({ key: k, label: k, list: S.data.items.filter(i => i.category === S.cat && i.kind === k), kind: true }))
+  const groups = S.cat ? [...new Set(S.data.items.filter(i => i.category === S.cat).map(i => i.kind))].map(k => ({ key: k, label: kindLabel(k), list: S.data.items.filter(i => i.category === S.cat && i.kind === k), kind: true }))
     : CATS.map(c => ({ key: c.key, label: c.label, list: S.data.items.filter(i => i.category === c.key) }));
   groups.forEach(g => { g.safe = sum(g.list.filter(i => i.safety === 'safe'), i => i.size); g.review = sum(g.list.filter(i => i.safety === 'review'), i => i.size); g.info = sum(g.list.filter(i => !cleanable(i)), i => i.size); g.total = g.safe + g.review + g.info; });
   groups.sort((a, b) => b.safe + b.review - a.safe - a.review || b.total - a.total);
@@ -387,53 +470,72 @@ function renderBars() {
 }
 
 function renderTop() {
-  const list = S.data.items.filter(i => cleanable(i) && (!S.cat || i.category === S.cat)).sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, 10);
+  const list = S.data.items.filter(i => cleanable(i) && (!S.cat || i.category === S.cat)).sort(bySize).slice(0, 10);
   const max = list[0]?.size || 1;
   $('#topn').textContent = list.length;
   $('#top').innerHTML = list.map(i => `<div class="li click" data-i="${i.id}"><div class="c"><div class="n">${esc(i.name)} <span style="color:var(--faint)">· ${esc(i.owner)}</span></div>
-    <div class="tbar" style="width:${(i.size || 0) / max * 100}%;background:${i.safety === 'safe' ? 'var(--green)' : 'var(--amber)'}"></div></div><span class="r">${fSize(i.size)}</span></div>`).join('') || '<div class="empty">Không còn gì để dọn</div>';
+    <div class="tbar" style="width:${(i.size || 0) / max * 100}%;background:${i.safety === 'safe' ? 'var(--green)' : 'var(--amber)'}"></div></div><span class="r">${fSize(i.size)}</span>${delBtn(i)}</div>`).join('') || '<div class="empty">Không còn gì để dọn</div>';
+}
+
+function renderFilters() {
+  const f = [];
+  if (S.f !== 'all') f.push(['f', 'Mức: ' + { safe: 'dọn an toàn', review: 'cân nhắc', info: 'kiểm kê' }[S.f]]);
+  if (S.kind) f.push(['kind', 'Loại: ' + kindLabel(S.kind)]);
+  if (S.owner != null) f.push(['owner', 'Thuộc: ' + S.owner]);
+  if (S.q.trim()) f.push(['q', `Tìm: “${S.q.trim()}”`]);
+  $('#filters').innerHTML = f.length ? f.map(([k, l]) => `<button class="chip on" data-unf="${k}" title="Bỏ lọc này">${esc(l)} <b>✕</b></button>`).join('')
+    + '<button class="chip" data-unf="all">Bỏ mọi lọc</button>' : '';
 }
 
 function renderTable() {
-  const rows = view().sort((a, b) => (b.size || 0) - (a.size || 0));
+  const rows = view().sort(bySize);
   const kinds = {};
   for (const i of S.data.items) if ((!S.cat || i.category === S.cat)) kinds[i.kind] = (kinds[i.kind] || 0) + 1;
-  $('#kinds').innerHTML = Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<button class="chip ${S.kind === k ? 'on' : ''}" data-k="${esc(k)}">${esc(k)} <b>${n}</b></button>`).join('');
-  $('#tabletitle').firstChild.textContent = (S.cat ? catOf(S.cat).label : 'Tất cả mục') + ' ';
+  $('#kinds').innerHTML = Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<button class="chip ${S.kind === k ? 'on' : ''}" data-k="${esc(k)}">${esc(kindLabel(k))} <b>${n}</b></button>`).join('');
+  $('#tabletitle').firstChild.textContent = (S.kind ? kindLabel(S.kind) : S.cat ? catOf(S.cat).label : 'Tất cả mục') + ' ';
   $('#icount').textContent = `${rows.length} · ${fSize(sum(rows, i => i.size))}`;
+  renderFilters();
   const shown = rows.slice(0, S.limit);
+  const filtered = S.f !== 'all' || S.kind || S.owner != null || S.q.trim();
   $('#rows').innerHTML = shown.map(i => `<tr data-i="${i.id}">
-    <td>${cleanable(i) ? `<input type="checkbox" data-x="${i.id}" ${S.sel.has(i.id) ? 'checked' : ''} aria-label="Chọn ${esc(i.name)}">` : ''}</td>
+    <td>${deletable(i) ? `<input type="checkbox" data-x="${i.id}" ${S.sel.has(i.id) ? 'checked' : ''} aria-label="Chọn ${esc(i.name)}">` : ''}</td>
     <td class="s"><div class="n" title="${esc(i.name)}"><span class="dot" style="display:inline-block;margin-right:7px;background:${catOf(i.category).color}"></span>${esc(i.name)}</div><div class="m" title="${esc(i.path)}">${esc(i.path)}</div></td>
     <td class="o" title="${esc(i.owner)}">${esc(i.owner)}</td><td class="num v">${esc(i.version)}</td><td class="num">${fSize(i.size)}</td>
     <td><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span></td>
-    <td class="ra"><button data-info="${i.id}" title="Chi tiết" aria-label="Chi tiết ${esc(i.name)}">${ICON.info}</button><button class="del" data-del="${i.id}" ${cleanable(i) ? '' : 'disabled'} title="${cleanable(i) ? 'Xoá (chuyển vào Thùng rác)…' : esc(whyNot(i))}" aria-label="Xoá ${esc(i.name)}">${ICON.trash}</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Không có mục nào khớp</td></tr>';
+    <td class="ra">${infoBtn(i, '')}${delBtn(i, '')}</td></tr>`).join('')
+    || `<tr><td colspan="7" class="empty">Không có mục nào khớp${filtered ? ' — đang có bộ lọc. <button class="btn" data-unf="all" style="margin-left:8px">Bỏ mọi lọc</button>' : ''}</td></tr>`;
   $('#more').innerHTML = rows.length > S.limit ? `<button class="btn" id="showmore">Hiện thêm (${rows.length - S.limit} mục)</button>` : '';
-  const sel = shown.filter(cleanable);
+  const sel = shown.filter(deletable);
   $('#pageall').checked = sel.length > 0 && sel.every(i => S.sel.has(i.id));
 }
 
 function renderOwners() {
   const by = {};
-  for (const i of S.data.items) if (i.category === 'caches') { const o = i.owner || '—'; by[o] = (by[o] || 0) + (i.size || 0); }
+  for (const i of S.data.items) if (i.category === 'caches') by[ownerOf(i)] = (by[ownerOf(i)] || 0) + (i.size || 0);
   const list = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 12), max = list[0]?.[1] || 1;
   $('#ocount').textContent = Object.keys(by).length;
-  $('#owners').innerHTML = list.map(([o, v]) => `<div class="li click" data-q="${esc(o)}"><div class="c"><div class="n" style="display:flex;justify-content:space-between;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(o)}</span><span class="num" style="color:var(--dim)">${fSize(v)}</span></div><div class="tbar" style="width:${v / max * 100}%;background:#4ade80"></div></div></div>`).join('') || '<div class="empty">Không có cache</div>';
+  $('#owners').innerHTML = list.map(([o, v]) => `<div class="li click" data-q="${esc(o)}" title="Xem cache của ${esc(o)}"><div class="c"><div class="n" style="display:flex;justify-content:space-between;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(o)}</span><span class="num" style="color:var(--dim)">${fSize(v)}</span></div><div class="tbar" style="width:${v / max * 100}%;background:#4ade80"></div></div>
+    <button class="mini del" data-delowner="${esc(o)}" title="Xoá cache của ${esc(o)}…" aria-label="Xoá cache của ${esc(o)}">${ICON.trash}</button></div>`).join('') || '<div class="empty">Không có cache</div>';
 }
 
 function renderRepos() {
   const list = S.data.items.filter(i => i.kind === 'repo').sort((a, b) => b.dirty - a.dirty || (b.last || '').localeCompare(a.last || ''));
   $('#gcount').textContent = list.length;
   $('#repos').innerHTML = list.slice(0, 14).map(i => `<div class="li click" data-i="${i.id}"><span class="dot" style="background:${i.dirty ? 'var(--amber)' : 'var(--green)'}"></span>
-    <div class="c"><div class="n">${esc(i.name)} <span style="color:var(--faint)">· ${esc(i.version)}</span></div><div class="m">${esc(i.note)}</div></div><span class="r">${fSize(i.size)}</span></div>`).join('') || '<div class="empty">Không tìm thấy repo</div>';
+    <div class="c"><div class="n">${esc(i.name)} <span style="color:var(--faint)">· ${esc(i.version)}</span></div><div class="m">${esc(i.note)}</div></div><span class="r">${fSize(i.size)}</span>${infoBtn(i)}${delBtn(i)}</div>`).join('')
+    + (list.length > 14 ? `<div class="more"><button class="btn" data-goto="git:repo">Xem cả ${list.length} repo</button></div>` : '') || '<div class="empty">Không tìm thấy repo</div>';
 }
 
 function renderPlugins() {
   const by = {};
-  for (const i of S.data.items) if (i.category === 'plugins') by[i.owner] = (by[i.owner] || 0) + 1;
+  for (const i of S.data.items) if (i.category === 'plugins') by[ownerOf(i)] = (by[ownerOf(i)] || 0) + 1;
   const list = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 14), max = list[0]?.[1] || 1;
   $('#pcount').textContent = sum(Object.values(by), v => v);
-  $('#plugs').innerHTML = list.map(([o, n]) => `<div class="li click" data-pq="${esc(o)}"><div class="c"><div class="n" style="display:flex;justify-content:space-between;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(o)}</span><span class="num" style="color:var(--dim)">${n}</span></div><div class="tbar" style="width:${n / max * 100}%;background:#2dd4bf"></div></div></div>`).join('') || '<div class="empty">Không có plugin</div>';
+  $('#plugs').innerHTML = list.map(([o, n]) => {
+    const can = S.data.items.some(i => i.category === 'plugins' && ownerOf(i) === o && deletable(i));
+    return `<div class="li click" data-pq="${esc(o)}" title="Xem plugin của ${esc(o)}"><div class="c"><div class="n" style="display:flex;justify-content:space-between;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(o)}</span><span class="num" style="color:var(--dim)">${n}</span></div><div class="tbar" style="width:${n / max * 100}%;background:#2dd4bf"></div></div>
+    <button class="mini del" data-delplug="${esc(o)}" ${can ? '' : 'disabled'} title="${can ? `Xoá plugin của ${esc(o)}…` : 'Plugin hệ thống macOS (SIP khoá) — không xoá được'}" aria-label="Xoá plugin của ${esc(o)}">${ICON.trash}</button></div>`;
+  }).join('') || '<div class="empty">Không có plugin</div>';
 }
 
 function renderSel() {
@@ -441,7 +543,7 @@ function renderSel() {
   $('#selsize').textContent = fSize(sum(items, i => i.size));
   $('#selcount').textContent = `${items.length} mục đã chọn`;
   $('#selbar').classList.toggle('on', items.length > 0);
-  $('#doclean').textContent = inApp() ? 'Dọn → Thùng rác' : 'Copy lệnh dọn';
+  $('#doclean').textContent = inApp() ? 'Xoá → Thùng rác' : 'Copy lệnh xoá';
   $('#preview').style.display = inApp() ? '' : 'none';
 }
 
@@ -449,91 +551,135 @@ function draw() {
   if (!S.data) return;
   renderSide(); renderHeader(); renderKpis(); renderBars(); renderTop(); renderTable(); renderOwners(); renderRepos(); renderPlugins(); renderSel();
 }
+/// Sau khi đổi bộ lọc từ chỗ khác trên trang: cuộn tới bảng để thấy kết quả ngay.
+/// Cuộn đồng bộ (không rAF / smooth): WKWebView có thể hoãn cả hai khi cửa sổ không được vẽ lại.
+function showTable() {
+  const m = $('main'), c = $('#tablecard');
+  m.scrollTop += c.getBoundingClientRect().top - m.getBoundingClientRect().top - 16;
+  c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+}
+function goTo(cat, kind = null, owner = null) {
+  S.cat = cat || null; S.kind = kind; S.owner = owner; S.q = ''; $('#q').value = ''; S.limit = PAGE;
+  if (S.cat) S.open.add(S.cat);
+}
 
 function openItem(id) {
   const i = byId[id]; if (!i) return;
+  const lk = locked(i);
   const extra = Object.entries(i).filter(([k]) => !['id', 'category', 'kind', 'name', 'owner', 'version', 'path', 'size', 'safety', 'action', 'note'].includes(k) && i[k] !== '' && i[k] != null);
-  drawer(`<div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${catOf(i.category).color}"></span><span style="color:var(--dim)">${catOf(i.category).label} · ${esc(i.kind)}</span><span style="flex:1"></span><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
+  drawer(`<div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${catOf(i.category).color}"></span><span style="color:var(--dim)">${catOf(i.category).label} · ${esc(kindLabel(i.kind))}</span><span style="flex:1"></span><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
     <h2>${esc(i.name)}</h2>
     <div class="actions">
       <button class="btn" data-reveal="${esc(i.path)}">${inApp() ? 'Hiện trong Finder' : 'Copy đường dẫn'}</button>
       <button class="btn" data-copy="${esc(i.path)}">Copy đường dẫn</button>
-      ${cleanable(i) ? `<button class="btn" data-toggle="${i.id}">${S.sel.has(i.id) ? 'Bỏ chọn' : 'Chọn để dọn'}</button>
-      <button class="btn" data-prev="${i.id}">Xem trước</button>
-      <button class="btn danger" data-del="${i.id}">Chuyển vào Thùng rác…</button>` : ''}
+      ${lk ? '' : `<button class="btn" data-toggle="${i.id}">${S.sel.has(i.id) ? 'Bỏ chọn' : 'Chọn để xoá'}</button>
+      ${i.kind === 'trash' ? '' : `<button class="btn" data-prev="${i.id}">Xem trước</button>`}
+      <button class="btn danger" data-del="${i.id}">${i.kind === 'trash' ? 'Đổ Thùng rác…' : 'Xoá → Thùng rác…'}</button>`}
     </div>
-    ${cleanable(i) ? '' : `<div class="sub" style="color:var(--faint)">${esc(whyNot(i))}.</div>`}
+    ${lk ? `<div class="sub" style="color:var(--faint);margin-top:10px">${esc(lk)}.</div>` : forced(i) ? `<div class="warn">${esc(warnFor(i))}</div>` : ''}
     <dl class="kv">
       <dt>Đường dẫn</dt><dd>${esc(i.path)}</dd>
       <dt>Thuộc</dt><dd>${esc(i.owner || '—')}</dd>
       <dt>Phiên bản</dt><dd>${esc(i.version || '—')}</dd>
       <dt>Dung lượng</dt><dd>${fSize(i.size)}</dd>
       <dt>Ghi chú</dt><dd>${esc(i.note || '—')}</dd>
-      <dt>Cách dọn</dt><dd>${!i.action ? 'không dọn — chỉ kiểm kê' : Array.isArray(i.action) ? esc(i.action.join(' ')) : 'chuyển vào Thùng rác'}</dd>
+      <dt>Cách xoá</dt><dd>${lk ? 'không xoá được' : i.kind === 'trash' ? 'đổ Thùng rác (vĩnh viễn)' : Array.isArray(i.action) ? esc(i.action.join(' ')) : 'chuyển vào Thùng rác' + (forced(i) ? ' (xoá đích danh — mục kiểm kê)' : '')}</dd>
       ${extra.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}
       <dt>ID</dt><dd>${i.id}</dd>
     </dl>`);
 }
 
-function cleanCmd(ids) {
+function cleanCmd(ids, force) {
   const root = (S.data.reportPath || '').replace(/\/reports\/[^/]+$/, '');
-  return `python3 ${JSON.stringify(root + '/maccleaner.py')} clean --report ${JSON.stringify(S.data.reportPath)} --ids ${ids.join(',')} --yes`;
+  return `python3 ${JSON.stringify(root + '/maccleaner.py')} clean --report ${JSON.stringify(S.data.reportPath)} --ids ${ids.join(',')}${force ? ' --force' : ''} --yes`;
 }
-
-function confirmClean(yes, ids) {
-  const items = (ids || [...S.sel]).map(id => byId[id]).filter(Boolean).sort((a, b) => (b.size || 0) - (a.size || 0));
+function preview(ids) {
+  const items = ids.map(id => byId[id]).filter(i => i && deletable(i));
   if (!items.length) return;
-  if (!inApp()) { copy(cleanCmd(items.map(i => i.id))); toast('Đã copy lệnh — dán vào Terminal để dọn'); return; }
-  S.lastIds = items.map(i => i.id);  // "Tiếp tục dọn" / "Dọn ngay" dùng ĐÚNG danh sách này, không phải vùng chọn hiện tại
-  if (!yes) { S.busy = true; post('clean:' + JSON.stringify({ ids: S.lastIds, yes: false })); toast('Đang xem trước…'); return; }
-  drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">Xác nhận dọn</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
-    <h2>Chuyển ${items.length} mục (${fSize(sum(items, i => i.size))}) vào Thùng rác?</h2>
-    <div class="sub">Khôi phục được từ Thùng rác cho tới khi đổ. Simulator hỏng được xoá bằng <code>xcrun simctl delete</code>. Mỗi mục được kiểm lại trước khi dọn.</div>
-    <div class="actions" style="margin:18px 0"><button class="btn danger" id="go">Dọn ngay</button><button class="btn" id="close2">Huỷ</button></div>
-    <div class="sec">Danh sách</div>${items.map(i => `<div class="res"><span class="st ${i.safety === 'safe' ? 'ok' : 'dry-run'}">${fSize(i.size)}</span>${esc(i.path)}</div>`).join('')}`);
+  const force = items.some(forced);
+  if (!inApp()) { copy(cleanCmd(items.map(i => i.id), force).replace(/ --yes$/, '')); toast('Đã copy lệnh xem trước'); return; }
+  S.lastIds = items.map(i => i.id); S.lastForce = force; S.busy = true; setBusy(true);
+  post('clean:' + JSON.stringify({ ids: S.lastIds, yes: false, force })); toast('Đang xem trước…');
+}
+function runClean(ids, force) {
+  if (!ids.length) return;
+  if (!inApp()) { copy(cleanCmd(ids, force)); toast('Đã copy lệnh — dán vào Terminal để xoá'); return closeDrawer(); }
+  S.lastIds = ids; S.lastForce = force; S.busy = true; setBusy(true);
+  post('clean:' + JSON.stringify({ ids, yes: true, force }));
+  drawer('<h2><span class="busy"></span>Đang xoá…</h2><div class="sub">Tiến độ ở Terminal log.</div>');
 }
 
-/// Hộp thoại xoá MỘT mục: chi tiết + xem trước + chuyển vào Thùng rác. Mục "cân nhắc" phải tick xác nhận.
+/// Hộp thoại xoá MỘT mục. Mục không phải "an toàn" phải tick xác nhận; mục kiểm kê/bảo vệ có cảnh báo theo loại.
 function confirmOne(id) {
   const i = byId[id]; if (!i) return;
-  if (!cleanable(i)) { toast(whyNot(i)); return openItem(id); }
-  if (!inApp()) { copy(cleanCmd([id])); toast('Đã copy lệnh dọn mục này — dán vào Terminal'); return; }
-  S.lastIds = [id];
-  const review = i.safety === 'review';
-  drawer(`<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;color:var(--dim)">Xoá mục</span><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
+  const lk = locked(i);
+  if (lk) { toast(lk); return openItem(id); }
+  const empty = i.kind === 'trash', ack = i.safety !== 'safe';
+  const warn = forced(i) ? warnFor(i) : i.safety === 'review' ? 'Mục mức cân nhắc: dọn được nhưng có thể là dữ liệu bạn còn cần (build, installer, file sót lại của app…). Xem trước hoặc mở trong Finder để kiểm.' : '';
+  drawer(`<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;color:var(--dim)">${empty ? 'Đổ Thùng rác' : 'Xoá mục'}</span><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
     <h2>${esc(i.name)}</h2>
     <dl class="kv">
       <dt>Đường dẫn</dt><dd>${esc(i.path)}</dd>
-      <dt>Loại</dt><dd>${catOf(i.category).label} · ${esc(i.kind)}</dd>
+      <dt>Loại</dt><dd>${catOf(i.category).label} · ${esc(kindLabel(i.kind))}</dd>
       <dt>Thuộc</dt><dd>${esc(i.owner || '—')}</dd>
       <dt>Dung lượng</dt><dd>${fSize(i.size)}</dd>
       <dt>Ghi chú</dt><dd>${esc(i.note || '—')}</dd>
-      <dt>Cách dọn</dt><dd>${Array.isArray(i.action) ? esc(i.action.join(' ')) : 'chuyển vào Thùng rác (khôi phục được cho tới khi đổ Thùng rác)'}</dd>
+      <dt>Cách xoá</dt><dd>${empty ? 'đổ Thùng rác — VĨNH VIỄN' : Array.isArray(i.action) ? esc(i.action.join(' ')) : 'chuyển vào Thùng rác (khôi phục được cho tới khi đổ Thùng rác)'}</dd>
     </dl>
-    ${review ? `<div class="warn">Mục mức <b>cân nhắc</b>: dọn được nhưng có thể là dữ liệu bạn còn cần (build, installer, file sót lại của app…). Xem trước hoặc mở trong Finder để kiểm.</div>
-    <label class="ack"><input type="checkbox" id="ackone"> Tôi đã xem, vẫn muốn dọn mục này</label>` : ''}
+    ${warn ? `<div class="warn ${forced(i) ? 'hot' : ''}">${esc(warn)}</div>` : ''}
+    ${ack ? `<label class="ack"><input type="checkbox" id="ackone"> ${empty ? 'Tôi hiểu mọi thứ trong Thùng rác sẽ mất vĩnh viễn' : 'Tôi đã xem, vẫn muốn xoá mục này'}</label>` : ''}
     <div class="actions" style="margin:18px 0">
-      <button class="btn danger" id="goone" data-id="${i.id}" ${review ? 'disabled' : ''}>Chuyển vào Thùng rác</button>
-      <button class="btn" data-prev="${i.id}">Xem trước</button>
-      <button class="btn" data-reveal="${esc(i.path)}">Hiện trong Finder</button>
+      <button class="btn danger" id="goone" data-id="${i.id}" ${ack ? 'disabled' : ''}>${empty ? 'Đổ Thùng rác vĩnh viễn' : 'Chuyển vào Thùng rác'}</button>
+      ${empty ? '' : `<button class="btn" data-prev="${i.id}">Xem trước</button>`}
+      <button class="btn" data-reveal="${esc(i.path)}">${inApp() ? 'Hiện trong Finder' : 'Copy đường dẫn'}</button>
       <button class="btn" id="close2">Huỷ</button>
     </div>
-    <div class="sub">Mục được kiểm lại an toàn ngay trước khi dọn (còn tồn tại, không thuộc vùng bảo vệ). Log ghi ở Terminal log.</div>`);
+    <div class="sub">Mục được kiểm lại ngay trước khi xoá (còn tồn tại, không thuộc vùng macOS khoá). Log ghi ở Terminal log.</div>`);
+}
+
+/// Hộp thoại xoá NHIỀU mục (Xoá toàn bộ, mục đã chọn, cả nhóm). Mặc định chỉ gồm mục dọn được; mục kiểm kê/bảo vệ
+/// phải tick thêm. Thùng rác không bao giờ gộp vào xoá hàng loạt (đổ là vĩnh viễn).
+function confirmBulk(list, title, withExtra) {
+  const all = list.filter(i => i.kind !== 'trash'), ok = all.filter(deletable);
+  const rec = ok.filter(cleanable), extra = ok.filter(forced);
+  if (!ok.length) { toast(all.length ? 'Các mục này macOS khoá — không xoá được' : 'Không có mục nào để xoá'); return; }
+  S.bulk = { title, rec, extra, locked: all.length - ok.length, trash: list.length - all.length, withExtra: withExtra ?? !rec.length, ack: false };
+  drawBulk();
+}
+function bulkItems() { const b = S.bulk; return (b.withExtra ? b.rec.concat(b.extra) : b.rec.slice()).sort(bySize); }
+function drawBulk() {
+  const b = S.bulk, items = bulkItems(), ex = items.filter(forced), needAck = items.some(i => i.safety !== 'safe');
+  const kinds = {};
+  for (const i of items) kinds[kindLabel(i.kind)] = (kinds[kindLabel(i.kind)] || 0) + 1;
+  const dirty = ex.filter(i => i.kind === 'repo' && i.dirty).length, SHOW = 400;
+  drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">${esc(b.title)}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
+    <h2>Chuyển ${items.length} mục (${fSize(sum(items, i => i.size))}) vào Thùng rác?</h2>
+    <div class="sub">${Object.entries(kinds).sort((x, y) => y[1] - x[1]).map(([k, n]) => `${n} ${esc(k)}`).join(' · ')}</div>
+    ${b.rec.length && b.extra.length ? `<label class="ack"><input type="checkbox" id="withextra" ${b.withExtra ? 'checked' : ''}> Gồm cả ${b.extra.length} mục kiểm kê/bảo vệ (${fSize(sum(b.extra, i => i.size))}) — ứng dụng, repo, plugin, backup mới nhất…</label>` : ''}
+    ${ex.length ? `<div class="warn hot">${ex.length} mục kiểm kê/bảo vệ không nằm trong khuyến nghị dọn: ứng dụng sẽ bị gỡ, repo mất cả code${dirty ? ` (${dirty} repo còn thay đổi chưa commit)` : ''}, plugin trong bundle app có thể làm app lỗi.</div>` : ''}
+    ${b.locked ? `<div class="sub">Bỏ qua ${b.locked} mục macOS khoá (SIP) hoặc thư mục gốc.</div>` : ''}
+    ${b.trash ? '<div class="sub">Thùng rác không gộp vào xoá hàng loạt — đổ riêng từ mục Thùng rác.</div>' : ''}
+    ${needAck ? `<label class="ack"><input type="checkbox" id="ackbulk" ${b.ack ? 'checked' : ''}> Tôi đã xem danh sách, vẫn muốn xoá</label>` : ''}
+    <div class="actions" style="margin:18px 0"><button class="btn danger" id="gobulk" ${needAck && !b.ack ? 'disabled' : ''}>${inApp() ? `Xoá ${items.length} mục` : 'Copy lệnh xoá'}</button>${inApp() ? '<button class="btn" id="prevbulk">Xem trước</button>' : ''}<button class="btn" id="close2">Huỷ</button></div>
+    <div class="sub">Khôi phục được từ Thùng rác cho tới khi đổ. Mỗi mục được kiểm lại ngay trước khi xoá.</div>
+    <div class="sec">Danh sách</div>${items.slice(0, SHOW).map(i => `<div class="res"><span class="st ${i.safety === 'safe' ? 'ok' : forced(i) ? 'error' : 'dry-run'}">${fSize(i.size)}</span>${esc(i.path)}</div>`).join('')}${items.length > SHOW ? `<div class="res" style="color:var(--faint)">… và ${items.length - SHOW} mục nữa</div>` : ''}`);
 }
 
 window.cleaned = res => {
-  S.busy = false;
+  S.busy = false; setBusy(false);
   const ok = res.results.filter(r => r.status === 'ok' || r.status === 'dry-run'), dry = res.results.some(r => r.status === 'dry-run');
   if (!dry) {
     const done = new Set(res.results.filter(r => r.status === 'ok').map(r => r.id));
     done.forEach(id => S.sel.delete(id));
-    S.data.items = S.data.items.filter(i => !done.has(i.id));
+    S.data.items = S.data.items.filter(i => !done.has(i.id) || i.kind === 'trash');
+    for (const i of S.data.items) if (done.has(i.id)) i.size = 0;  // Thùng rác đã đổ: còn mục, dung lượng 0
+    for (const id of done) if (byId[id]?.kind !== 'trash') delete byId[id];
     S.data.disk.free = res.freeAfter;
   }
-  drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">${dry ? 'Xem trước' : 'Kết quả dọn'}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
-    <h2>${dry ? 'Sẽ dọn' : 'Đã dọn'} ${ok.length}/${res.results.length} mục · ${fSize(res.freed)}</h2>
+  drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">${dry ? 'Xem trước' : 'Kết quả xoá'}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
+    <h2>${dry ? 'Sẽ xoá' : 'Đã xoá'} ${ok.length}/${res.results.length} mục · ${fSize(res.freed)}</h2>
     <div class="sub">${dry ? 'Chưa thay đổi gì.' : `Đĩa trống ${fSize(res.freeBefore)} → ${fSize(res.freeAfter)}${res.log ? ' · log ' + esc(res.log) : ''}. Đổ Thùng rác để lấy lại dung lượng thật.`}</div>
-    ${dry ? `<div class="actions" style="margin:18px 0"><button class="btn danger" id="goconfirm">Tiếp tục dọn</button></div>` : ''}
+    ${dry && ok.length ? '<div class="actions" style="margin:18px 0"><button class="btn danger" id="goconfirm">Tiếp tục xoá</button></div>' : ''}
     <div class="sec">Chi tiết</div>${res.results.map(r => `<div class="res"><span class="st ${r.status}">${r.status}</span>${esc(r.path)}${r.reason ? ` <span style="color:var(--faint)">— ${esc(r.reason)}</span>` : ''}</div>`).join('')}`);
   draw();
 };
@@ -545,15 +691,18 @@ window.scanFailed = msg => {
 
 function drawer(h) { $('#drawer').innerHTML = h; $('#drawer').classList.add('on'); $('#veil').classList.add('on'); $('#drawer').scrollTop = 0; }
 const closeDrawer = () => { $('#drawer').classList.remove('on'); $('#veil').classList.remove('on'); };
-function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 2200); }
+function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 2600); }
 function copy(t) { if (inApp()) post('copy:' + t); else navigator.clipboard?.writeText(t).catch(() => prompt('Copy:', t)); }
+const scopeName = () => [S.cat ? catOf(S.cat).label : 'Tổng quan', S.kind && kindLabel(S.kind), S.owner, S.q.trim() && `“${S.q.trim()}”`].filter(Boolean).join(' › ');
+const itemsWhere = f => S.data.items.filter(f);
 
 document.addEventListener('click', e => {
   if (e.target.matches('input[data-x]')) { const id = e.target.dataset.x; e.target.checked ? S.sel.add(id) : S.sel.delete(id); renderSel(); renderTable(); return; }
-  if (e.target.id === 'pageall') { for (const i of view().sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, S.limit).filter(cleanable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderTable(); return; }
-  const t = e.target.closest('[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#close,#close2,#veil,#rescan,#theme,#logbtn,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#go,#goconfirm');
+  if (e.target.id === 'pageall') { for (const i of view().sort(bySize).slice(0, S.limit).filter(deletable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderTable(); return; }
+  if (e.target.matches('#ackone, #ackbulk, #withextra')) return;  // xử lý ở 'change'
+  const t = e.target.closest('[data-tog],[data-ck],[data-kf],[data-goto],[data-unf],[data-delowner],[data-delplug],[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#gobulk,#prevbulk,#delall,#close,#close2,#veil,#rescan,#theme,#logbtn,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#goconfirm');
   if (!t) return;
-  const id = t.id;
+  const id = t.id, d = t.dataset;
   if (id === 'close' || id === 'close2' || id === 'veil') return closeDrawer();
   if (id === 'theme') { const n = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = n; store.set('theme', n); return; }
   if (id === 'rescan') { if (inApp()) { post('scan'); toast('Đang quét, mất vài phút — xem Terminal log'); } else toast('Chạy: python3 maccleaner.py scan'); return; }
@@ -564,28 +713,56 @@ document.addEventListener('click', e => {
   if (id === 'showmore') { S.limit += PAGE; return renderTable(); }
   if (id === 'selall') { for (const i of view().filter(i => i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderTable(); }
   if (id === 'selclear') { S.sel.clear(); renderSel(); return renderTable(); }
-  if (id === 'preview') return confirmClean(false);
-  if (id === 'doclean') return confirmClean(true);
-  if (id === 'goconfirm') return (S.lastIds && S.lastIds.length === 1) ? confirmOne(S.lastIds[0]) : confirmClean(true, S.lastIds);
-  if (id === 'goone') { const x = t.dataset.id; S.lastIds = [x]; S.busy = true; post('clean:' + JSON.stringify({ ids: [x], yes: true })); drawer('<h2><span class="busy"></span>Đang dọn…</h2><div class="sub">Tiến độ ở Terminal log.</div>'); return; }
-  if (t.dataset.del != null) return confirmOne(t.dataset.del);
-  if (t.dataset.info != null) return openItem(t.dataset.info);
-  if (t.dataset.prev != null) return confirmClean(false, [t.dataset.prev]);
-  if (id === 'go') { S.busy = true; post('clean:' + JSON.stringify({ ids: S.lastIds || [...S.sel], yes: true })); drawer('<h2><span class="busy"></span>Đang dọn…</h2>'); return; }
-  if (t.dataset.copy != null) { copy(t.dataset.copy); toast('Đã copy'); return; }
-  if (t.dataset.reveal != null) { inApp() ? post('reveal:' + t.dataset.reveal) : (copy(t.dataset.reveal), toast('Đã copy đường dẫn')); return; }
-  if (t.dataset.toggle != null) { const x = t.dataset.toggle; S.sel.has(x) ? S.sel.delete(x) : S.sel.add(x); renderSel(); renderTable(); return openItem(x); }
-  if (t.dataset.i != null) return openItem(t.dataset.i);
-  if (t.dataset.c != null) { S.cat = t.dataset.c || null; S.kind = null; S.limit = PAGE; }
-  else if (t.dataset.f != null) { S.f = t.dataset.f; S.limit = PAGE; }
-  else if (t.dataset.k != null) { S.kind = S.kind === t.dataset.k ? null : t.dataset.k; S.limit = PAGE; }
-  else if (t.dataset.q != null) { S.cat = 'caches'; S.kind = null; S.q = t.dataset.q; $('#q').value = S.q; }
-  else if (t.dataset.pq != null) { S.cat = 'plugins'; S.kind = null; S.q = t.dataset.pq; $('#q').value = S.q; }
-  draw();
+  if (id === 'preview') return preview([...S.sel]);
+  if (id === 'doclean') return confirmBulk([...S.sel].map(x => byId[x]).filter(Boolean), 'Xoá mục đã chọn', true);
+  if (id === 'delall') return confirmBulk(view(), 'Xoá toàn bộ — ' + scopeName());
+  if (id === 'gobulk') { const its = bulkItems(); return runClean(its.map(i => i.id), its.some(forced)); }
+  if (id === 'prevbulk') return preview(bulkItems().map(i => i.id));
+  if (id === 'goconfirm') return S.lastIds?.length === 1 ? confirmOne(S.lastIds[0]) : confirmBulk(S.lastIds.map(x => byId[x]).filter(Boolean), 'Xoá', S.lastForce);
+  if (id === 'goone') { const x = d.id; return runClean([x], forced(byId[x])); }
+  if (d.delowner != null) return confirmBulk(itemsWhere(i => i.category === 'caches' && ownerOf(i) === d.delowner), 'Xoá cache của ' + d.delowner);
+  if (d.delplug != null) return confirmBulk(itemsWhere(i => i.category === 'plugins' && ownerOf(i) === d.delplug), 'Xoá plugin của ' + d.delplug);
+  if (d.del != null) return confirmOne(d.del);
+  if (d.info != null) return openItem(d.info);
+  if (d.prev != null) return preview([d.prev]);
+  if (d.copy != null) { copy(d.copy); toast('Đã copy'); return; }
+  if (d.reveal != null) { inApp() ? post('reveal:' + d.reveal) : (copy(d.reveal), toast('Đã copy đường dẫn')); return; }
+  if (d.toggle != null) { const x = d.toggle; S.sel.has(x) ? S.sel.delete(x) : S.sel.add(x); renderSel(); renderTable(); return openItem(x); }
+  if (d.i != null) return openItem(d.i);
+  if (d.tog != null) { S.open.has(d.tog) ? S.open.delete(d.tog) : S.open.add(d.tog); return renderSide(); }
+  if (d.unf != null) {
+    if (d.unf === 'all' || d.unf === 'f') S.f = 'all';
+    if (d.unf === 'all' || d.unf === 'kind') S.kind = null;
+    if (d.unf === 'all' || d.unf === 'owner') S.owner = null;
+    if (d.unf === 'all' || d.unf === 'q') { S.q = ''; $('#q').value = ''; }
+    S.limit = PAGE; return draw();
+  }
+  if (d.ck != null) { const [c, k] = d.ck.split('|'); goTo(c, k); draw(); return showTable(); }
+  if (d.c != null) {
+    const side = !!t.closest('#plist');  // đo TRƯỚC draw(): draw() vẽ lại sidebar nên t bị tách khỏi DOM
+    goTo(d.c); draw();
+    if (side) return $('main').scrollTo({ top: 0 });
+    return showTable();
+  }
+  if (d.goto != null) { const [c, k] = d.goto.split(':'); goTo(c, k || null); draw(); return showTable(); }
+  if (d.kf != null) { S.f = d.kf; S.limit = PAGE; draw(); return showTable(); }
+  if (d.f != null) { S.f = d.f; S.limit = PAGE; return draw(); }
+  if (d.k != null) {
+    const bars = !!t.closest('#bars');
+    S.kind = S.kind === d.k ? null : d.k; S.limit = PAGE; draw();
+    return bars ? showTable() : undefined;
+  }
+  if (d.q != null) { goTo('caches', null, d.q); draw(); return showTable(); }
+  if (d.pq != null) { goTo('plugins', null, d.pq); draw(); return showTable(); }
 });
-document.addEventListener('change', e => { if (e.target.id === 'ackone') $('#goone').disabled = !e.target.checked; });
+document.addEventListener('change', e => {
+  if (e.target.id === 'ackone') $('#goone').disabled = !e.target.checked;
+  if (e.target.id === 'ackbulk') { S.bulk.ack = e.target.checked; $('#gobulk').disabled = !e.target.checked; }
+  if (e.target.id === 'withextra') { S.bulk.withExtra = e.target.checked; S.bulk.ack = false; drawBulk(); }
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeDrawer();
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.kpi')) { e.preventDefault(); e.target.click(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); setTerm(!$('#term').classList.contains('on')); }
 });
 if (inApp() && store.get('term') === '1') setTerm(true);

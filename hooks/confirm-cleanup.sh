@@ -11,6 +11,8 @@ cmd="$(printf '%s' "$input" | /usr/bin/env python3 -c 'import json,sys; print(js
 reason=""
 if printf '%s' "$cmd" | /usr/bin/grep -Eq '(mac-cleaner|maccleaner\.py)[^;&|]*[[:space:]]clean[[:space:]][^;&|]*--yes'; then
   reason="mac-cleaner sắp dọn thật (--yes): các mục sẽ bị chuyển vào Thùng rác."
+  printf '%s' "$cmd" | /usr/bin/grep -q -- '--force' \
+    && reason="mac-cleaner sắp xoá đích danh (--force --yes): gồm cả mục kiểm kê/bảo vệ như app, repo, plugin; nếu có mục Thùng rác thì Thùng rác bị đổ vĩnh viễn."
 elif printf '%s' "$cmd" | /usr/bin/grep -Eq '(^|[;&|[:space:]/"(])(mo|mole)[[:space:]]+(clean|purge|uninstall|optimize|installer|remove)\b' \
      && ! printf '%s' "$cmd" | /usr/bin/grep -Eq -- '--dry-run|(^|[[:space:]])-n([[:space:]]|$)'; then
   reason="Mole sắp chạy thật (không có --dry-run): có thể xoá cache, file, hoặc gỡ ứng dụng."

@@ -40,6 +40,13 @@ SYSTEM_CACHE_PREFIX = "com.apple."
 # clean chỉ chạm các vùng này; path phải sâu ít nhất 2 cấp dưới vùng.
 ALLOWED_ROOTS = [HOME, "/Library/Caches", "/Library/Logs"]
 CLEANABLE = {"safe", "review"}
+# Xoá mạnh (--force) cho phép xoá MỌI mục hiện trên dashboard, trừ những chỗ macOS khoá (SIP) hay thư mục gốc.
+SIP_ROOTS = ("/System/", "/usr/", "/bin/", "/sbin/", "/private/var/db/", "/Library/Apple/")
+SIP_OK = ("/usr/local/",)
+HOME_FOLDERS = {"Library", "Documents", "Desktop", "Downloads", "Applications", "Movies", "Music", "Pictures", "Public"}
+# Mục "sót lại" nằm trong thư mục Library thường được bảo vệ, nhưng vẫn dọn được (mức cân nhắc)
+LEFTOVER_LIBRARY = ("Application Support", "LaunchAgents")
+TRASH_BIN = "/usr/bin/trash"  # có từ macOS 15; máy cũ hơn dùng phương án chuyển thẳng vào ~/.Trash
 
 ARTIFACT_DIRS = {"node_modules", "Pods", ".build", ".venv", "venv", "DerivedData", ".gradle", ".dart_tool",
                  ".next", ".nuxt", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".turbo", ".parcel-cache"}
@@ -94,12 +101,13 @@ def plist(path):
         return {}
 
 
-def is_protected(path):
+def is_protected(path, kind=""):
     if any(fnmatch.fnmatch(path, p) or path.startswith(p.rstrip("*") + "/") for p in PROTECTED):
         return True
     lib = os.path.join(HOME, "Library") + "/"
     if path.startswith(lib):
-        return path[len(lib):].split("/")[0] not in LIBRARY_CLEANABLE
+        top = path[len(lib):].split("/")[0]
+        return top not in LIBRARY_CLEANABLE and not (kind in ("app-leftover", "agent-leftover") and top in LEFTOVER_LIBRARY)
     if path.startswith(HOME + "/."):
         rel = path[len(HOME) + 1:]
         return not any(rel == c or rel.startswith(c + "/") for c in DOT_CLEANABLE)
@@ -111,7 +119,7 @@ def vkey(v):
 
 
 def item(category, kind, name, path, *, owner="", version="", safety="info", action=None, note="", size=None, **extra):
-    if safety in CLEANABLE and is_protected(path):
+    if safety in CLEANABLE and is_protected(path, kind):
         safety, action, note = "protected", None, (note + " · " if note else "") + "được bảo vệ"
     iid = hashlib.sha1(f"{category}|{kind}|{path}".encode()).hexdigest()[:10]
     return dict(id=iid, category=category, kind=kind, name=name, owner=owner, version=version, path=path,
@@ -460,10 +468,28 @@ def scan_junk(artifacts, installers, backups, bundle_ids):
         if n.endswith(".plist") and leftover(n[:-6]):
             items.append(item("junk", "app-leftover", n, p, owner=n[:-6], safety="review", action="trash",
                               note="file cấu hình của app không còn cài"))
+    for p in children(os.path.join(lib, "Application Support")):
+        if leftover(Path(p).name):
+            items.append(item("junk", "app-leftover", Path(p).name, p, owner=Path(p).name, safety="review", action="trash",
+                              note="dữ liệu của app không còn cài (theo bundle id)"))
+    for p in children(os.path.join(lib, "LaunchAgents")):
+        prog = agent_program(p)
+        if prog and not os.path.exists(prog):
+            items.append(item("junk", "agent-leftover", Path(p).name, p, owner=plist(p).get("Label", ""), safety="review",
+                              action="trash", note=f"chương trình của agent không còn: {prog}"))
     trash = os.path.join(HOME, ".Trash")
     items.append(item("junk", "trash", "Thùng rác", trash, owner="Finder",
                       note="đổ bằng Finder; terminal cần Full Disk Access để đo"))
     return items
+
+
+def agent_program(path):
+    """Đường dẫn chương trình mà LaunchAgent chạy (None nếu không đọc được / không phải đường dẫn tuyệt đối)."""
+    if not path.endswith(".plist"):
+        return None
+    d = plist(path)
+    prog = d.get("Program") or (d.get("ProgramArguments") or [None])[0]
+    return os.path.expanduser(prog) if isinstance(prog, str) and prog.startswith(("/", "~")) else None
 
 
 # ---------- scan ----------
@@ -559,26 +585,88 @@ def write_reports(rep, out):
 
 
 # ---------- clean ----------
-def validate(it):
-    """Lý do từ chối dọn item, hoặc None nếu được phép. Kiểm lại lúc clean, không tin report."""
+def hard_deny(p):
+    """Chỗ không bao giờ xoá, kể cả --force: macOS khoá (SIP), thư mục gốc, hoặc thứ Mac Cleaner đang chạy trên đó."""
+    if p.startswith(SIP_ROOTS) and not p.startswith(SIP_OK):
+        return "thuộc hệ thống macOS (SIP khoá) — không xoá được"
+    if len(Path(p).parts) < 3 or p == HOME or HOME.startswith(p + "/"):
+        return "thư mục gốc — không xoá"
+    if p.startswith(HOME + "/") and len(Path(p).relative_to(HOME).parts) == 1 and Path(p).name in HOME_FOLDERS:
+        return "thư mục chuẩn của macOS — không xoá"
+    for used in (os.path.realpath(sys.executable), ROOT, DATA):
+        if used == p or used.startswith(p + "/"):
+            return "Mac Cleaner đang dùng thư mục này (Python / chính nó / report)"
+    return None
+
+
+def action_of(it, force=False):
+    """Cách dọn: theo report với mục dọn được; --force thì mọi mục khác chuyển vào Thùng rác (Thùng rác: đổ)."""
+    if it.get("safety") in CLEANABLE and it.get("action"):
+        return it["action"]
+    if not force:
+        return None
+    if it.get("kind") == "trash":
+        return "empty-trash"
+    return it.get("action") or "trash"
+
+
+def validate(it, force=False):
+    """Lý do từ chối dọn item, hoặc None nếu được phép. Kiểm lại lúc clean, không tin report.
+    force=True (người dùng chọn đích danh trên dashboard): bỏ qua mức an toàn và vùng bảo vệ, chỉ giữ chặn cứng."""
     p = it.get("path", "")
-    if it.get("safety") not in CLEANABLE or not it.get("action"):
-        return "item chỉ để kiểm kê, không dọn được"
+    act = action_of(it, force)
+    if act is None:
+        return "item chỉ để kiểm kê — chọn xoá đích danh (--force) nếu thật sự muốn xoá"
     if not os.path.isabs(p) or os.path.normpath(p) != p.rstrip("/"):
         return "đường dẫn không hợp lệ"
-    if is_protected(p):
-        return "đường dẫn được bảo vệ"
-    root = next((r for r in ALLOWED_ROOTS if p.startswith(r + "/")), None)
-    if not root or len(Path(p).relative_to(root).parts) < (2 if root == HOME else 1):
-        return "ngoài vùng cho phép dọn"
-    if isinstance(it["action"], list):
-        if it["action"][:3] != ["xcrun", "simctl", "delete"]:
+    if act == "empty-trash":
+        return None if p == os.path.join(HOME, ".Trash") else "đường dẫn Thùng rác không hợp lệ"
+    deny = hard_deny(p)
+    if deny:
+        return deny
+    if not force:
+        if is_protected(p, it.get("kind", "")):
+            return "đường dẫn được bảo vệ"
+        root = next((r for r in ALLOWED_ROOTS if p.startswith(r + "/")), None)
+        if not root or len(Path(p).relative_to(root).parts) < (2 if root == HOME else 1):
+            return "ngoài vùng cho phép dọn"
+    if isinstance(act, list):
+        if act[:3] != ["xcrun", "simctl", "delete"]:
             return "lệnh không nằm trong danh sách cho phép"
-    elif it["action"] != "trash":
+    elif act != "trash":
         return "action không hỗ trợ"
     elif not os.path.lexists(p):
         return "không còn tồn tại"
     return None
+
+
+def to_trash(p):
+    """Chuyển vào Thùng rác: /usr/bin/trash (macOS 15+, có "Đưa trở lại"); máy cũ hơn thì chuyển thẳng vào ~/.Trash."""
+    if os.path.exists(TRASH_BIN):
+        r = subprocess.run([TRASH_BIN, p], capture_output=True, text=True)
+        return None if r.returncode == 0 else (r.stderr or r.stdout).strip()[:200] or f"trash thoát mã {r.returncode}"
+    dest = os.path.join(HOME, ".Trash", Path(p).name)
+    if os.path.lexists(dest):
+        dest += time.strftime(" %H.%M.%S")
+    try:
+        shutil.move(p, dest)
+        return None
+    except OSError as e:
+        return str(e)[:200]
+
+
+def run_action(it, act):
+    """Thực thi một mục đã qua validate. Trả về lỗi (chuỗi) hoặc None."""
+    p = it["path"]
+    if act == "empty-trash":
+        r = subprocess.run(["/usr/bin/osascript", "-e", 'tell application "Finder" to empty trash'], capture_output=True, text=True)
+        return None if r.returncode == 0 else (r.stderr or r.stdout).strip()[:200]
+    if isinstance(act, list):
+        r = subprocess.run(act, capture_output=True, text=True)
+        return None if r.returncode == 0 else (r.stderr or r.stdout).strip()[:200]
+    if p.startswith(os.path.join(HOME, "Library", "LaunchAgents") + "/") and p.endswith(".plist"):
+        subprocess.run(["/bin/launchctl", "bootout", f"gui/{os.getuid()}", p], capture_output=True)  # ngừng agent trước khi bỏ plist
+    return to_trash(p)
 
 
 def select(items, ids=None, categories=None, include_review=False):
@@ -596,19 +684,18 @@ def select(items, ids=None, categories=None, include_review=False):
     return out
 
 
-def clean(rep, chosen, yes=False, log=print):
+def clean(rep, chosen, yes=False, log=print, force=False):
     results, freed = [], 0
     log_path = os.path.join(DATA, "logs", "clean-" + time.strftime("%Y%m%d-%H%M%S") + ".jsonl")
     if yes:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
     for it in chosen:
-        why = validate(it)
+        why = validate(it, force)
         status = "skip" if why else "dry-run" if not yes else "ok"
         if not why and yes:
-            cmd = it["action"] if isinstance(it["action"], list) else ["/usr/bin/trash", it["path"]]
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                status, why = "error", (r.stderr or r.stdout).strip()[:200]
+            err = run_action(it, action_of(it, force))
+            if err:
+                status, why = "error", err
         if status in ("ok", "dry-run"):
             freed += it.get("size") or 0
         res = dict(id=it["id"], path=it["path"], size=it.get("size"), status=status, reason=why or "")
@@ -631,6 +718,8 @@ def main(argv=None):
     c.add_argument("--ids", help="danh sách id, cách nhau dấu phẩy")
     c.add_argument("--category", action="append", help="chỉ nhóm này (lặp được)")
     c.add_argument("--include-review", action="store_true", help="gồm cả mục 'review' (cân nhắc)")
+    c.add_argument("--force", action="store_true",
+                   help="cho phép cả mục kiểm kê/bảo vệ chọn đích danh bằng --ids (vẫn chặn SIP và thư mục gốc; Thùng rác = đổ vĩnh viễn)")
     c.add_argument("--yes", action="store_true", help="thực thi (không có: chỉ preview)")
     c.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
@@ -642,6 +731,8 @@ def main(argv=None):
         else:
             print(f"Xong: {len(rep['items'])} mục trong {rep['seconds']}s\n  {stem}.html\n  {stem}.md\n  {stem}.json")
         return 0
+    if a.force and not a.ids:
+        ap.error("--force chỉ dùng kèm --ids (chọn đích danh từng mục)")
     path = a.report or max(glob.glob(os.path.join(DATA, "reports", "report-*.json")), default=None, key=os.path.getmtime)
     if not path:
         ap.error("chưa có report, chạy `scan` trước")
@@ -650,7 +741,7 @@ def main(argv=None):
     before = shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
     err = lambda m: print(m, file=sys.stderr, flush=True)
     (err if a.json else print)(f"{'Dọn' if a.yes else 'Xem trước'} {len(chosen)} mục từ {os.path.basename(path)}…")
-    res = clean(rep, chosen, a.yes, log=err if a.json else print)  # --json: log ra stderr (app hiện ở terminal log)
+    res = clean(rep, chosen, a.yes, log=err if a.json else print, force=a.force)  # --json: log ra stderr (app hiện ở terminal log)
     res["freeBefore"], res["freeAfter"] = before, shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
     if a.json:
         print(json.dumps(res, ensure_ascii=False))

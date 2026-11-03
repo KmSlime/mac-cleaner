@@ -108,6 +108,85 @@ class CleanSafety(unittest.TestCase):
             self.assertEqual(res["results"][0]["status"], "dry-run")
 
 
+class ForceDelete(unittest.TestCase):
+    """Xoá đích danh mục bất kỳ trên dashboard (--force): bỏ mức an toàn, vẫn chặn cứng SIP/thư mục gốc."""
+    def it(self, path, **kw):
+        return dict(dict(id="x", path=path, kind="repo", safety="info", action=None, size=1), **kw)
+
+    def test_inventory_needs_force(self):
+        with tempfile.TemporaryDirectory(dir=mc.HOME) as d:
+            self.assertIsNotNone(mc.validate(self.it(d)))
+            self.assertIsNone(mc.validate(self.it(d), force=True))
+            self.assertEqual(mc.action_of(self.it(d), force=True), "trash")
+
+    def test_force_still_hard_denies(self):
+        h = mc.HOME
+        for p in ["/System/Library/Foo.appex", "/usr/bin/git", "/bin/ls", "/Applications", "/opt",
+                  h, h + "/Documents", h + "/Library", mc.ROOT, os.path.dirname(mc.ROOT) if mc.ROOT.count("/") > 2 else mc.ROOT]:
+            self.assertIsNotNone(mc.validate(self.it(p), force=True), p)
+        bad = self.it(h + "/Library/x/y", safety="review", action=["rm", "-rf", "/"])
+        self.assertIsNotNone(mc.validate(bad, force=True))
+        self.assertIsNotNone(mc.validate(self.it(h + "/Library/Caches/__mc_does_not_exist__"), force=True))
+        self.assertIsNotNone(mc.validate(self.it(h + "/Library/../Documents/x"), force=True))
+
+    def test_usr_local_and_protected_allowed_with_force(self):
+        self.assertIsNone(mc.hard_deny("/usr/local/bin/thing"))
+        self.assertIsNone(mc.hard_deny(mc.HOME + "/.ssh"))
+
+    def test_trash_item_means_empty_trash(self):
+        t = self.it(os.path.join(mc.HOME, ".Trash"), kind="trash")
+        self.assertIsNone(mc.validate(t, force=True))
+        self.assertEqual(mc.action_of(t, force=True), "empty-trash")
+        self.assertIsNotNone(mc.validate(dict(t, path="/tmp/x"), force=True))
+        self.assertIsNone(mc.action_of(t))
+
+    def test_force_dry_run_touches_nothing(self):
+        with tempfile.TemporaryDirectory(dir=mc.HOME) as d:
+            res = mc.clean({}, [self.it(d)], yes=False, log=lambda *_: None, force=True)
+            self.assertTrue(os.path.isdir(d))
+            self.assertEqual(res["results"][0]["status"], "dry-run")
+
+    def test_cli_force_requires_ids(self):
+        with self.assertRaises(SystemExit):
+            mc.main(["clean", "--force", "--report", os.devnull])
+
+
+class TrashFallback(unittest.TestCase):
+    def test_moves_into_home_trash_without_trash_binary(self):
+        old = mc.HOME, mc.TRASH_BIN
+        with tempfile.TemporaryDirectory() as h:
+            try:
+                mc.HOME, mc.TRASH_BIN = h, os.path.join(h, "no-trash-bin")
+                os.mkdir(os.path.join(h, ".Trash"))
+                for _ in range(2):  # trùng tên trong Thùng rác → thêm hậu tố giờ
+                    f = os.path.join(h, "a.txt")
+                    open(f, "w").close()
+                    self.assertIsNone(mc.to_trash(f))
+                    self.assertFalse(os.path.exists(f))
+                self.assertEqual(len(os.listdir(os.path.join(h, ".Trash"))), 2)
+            finally:
+                mc.HOME, mc.TRASH_BIN = old
+
+
+class Leftovers(unittest.TestCase):
+    def test_leftover_kinds_in_library_are_cleanable(self):
+        h = mc.HOME
+        self.assertFalse(mc.is_protected(h + "/Library/Application Support/com.gone.app", "app-leftover"))
+        self.assertFalse(mc.is_protected(h + "/Library/LaunchAgents/com.gone.agent.plist", "agent-leftover"))
+        self.assertTrue(mc.is_protected(h + "/Library/Application Support/com.gone.app"))
+
+    def test_agent_program_detects_missing_binary(self):
+        import plistlib
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "com.gone.agent.plist")
+            with open(p, "wb") as f:
+                plistlib.dump({"Label": "com.gone.agent", "ProgramArguments": [d + "/missing/bin", "--x"]}, f)
+            self.assertEqual(mc.agent_program(p), d + "/missing/bin")
+            with open(p, "wb") as f:
+                plistlib.dump({"Label": "x", "ProgramArguments": ["sh", "-c", "true"]}, f)
+            self.assertIsNone(mc.agent_program(p))
+
+
 class HomeWalk(unittest.TestCase):
     def test_finds_repos_artifacts_installers(self):
         with tempfile.TemporaryDirectory() as root:

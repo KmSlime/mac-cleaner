@@ -217,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
               let ids = obj["ids"] as? [String], !ids.isEmpty,
               ids.allSatisfy({ $0.range(of: "^[0-9a-f]{10}$", options: .regularExpression) != nil }) else { return }
         var a = ["clean", "--report", report, "--ids", ids.joined(separator: ","), "--json"]
+        if obj["force"] as? Bool == true { a.append("--force") }  // xoá đích danh mục kiểm kê/bảo vệ (người dùng đã xác nhận)
         if obj["yes"] as? Bool == true { a.append("--yes") }
         log("$ python3 maccleaner.py " + a.joined(separator: " "))
         DispatchQueue.global(qos: .userInitiated).async {

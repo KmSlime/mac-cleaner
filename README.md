@@ -32,6 +32,7 @@ python3 maccleaner.py clean                      # preview: mọi mục "an toà
 python3 maccleaner.py clean --category caches --yes          # dọn thật một nhóm
 python3 maccleaner.py clean --ids a1b2c3d4e5,... --yes       # dọn đúng các id (lấy từ report/app)
 python3 maccleaner.py clean --include-review ...             # gồm cả mục "cân nhắc"
+python3 maccleaner.py clean --ids <id> --force --yes          # xoá đích danh cả mục kiểm kê/bảo vệ (app, repo, plugin…)
 
 swift run MacCleaner                             # app desktop: quét lại, chọn, xem trước, dọn ngay trong UI
 swift run MacCleaner --snapshot x.png            # render report mới nhất ra ảnh rồi thoát
@@ -42,9 +43,21 @@ python3 -m unittest discover tests               # unit test
 Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 5.9+ cho app. Không có dependency ngoài.
 App `.app` ghi report/log vào `~/Library/Application Support/MacCleaner`; `swift run`/CLI ghi cạnh source (`reports/`, `logs/`, đã gitignore).
 
-## Xoá từng mục
+## Mục lục
 
-Mỗi dòng trong bảng có nút **ⓘ** (chi tiết) và **🗑** (xoá). Nút xoá mở hộp thoại riêng cho mục đó: đường dẫn, loại, app sở hữu, dung lượng, ghi chú, cách dọn, kèm **Xem trước**, **Hiện trong Finder** và **Chuyển vào Thùng rác**. Mục mức `cân nhắc` phải tick "Tôi đã xem, vẫn muốn dọn" mới xoá được; mục `bảo vệ`/`kiểm kê` có nút xoá mờ kèm lý do. Mục vẫn được kiểm lại an toàn ngay trước khi dọn, và chỉ chuyển vào Thùng rác. Trong report HTML tĩnh, nút xoá copy lệnh `clean --ids …` để dán vào Terminal.
+Sidebar là cây mục lục: **Tổng quan** → từng nhóm (Ứng dụng, Plugin, Extension, Git, Cache & log, Junk) → từng loại bên trong (vd Cache & log › Log, Cache người dùng, Xcode DerivedData…), mỗi nút có số mục và dung lượng. Bấm mũi tên để mở/thu gọn, bấm tên để xem. Bấm bất kỳ chỗ nào trên trang dẫn tới danh sách (một loại trong cây, một thanh biểu đồ, thẻ KPI, một app trong "App chiếm cache", một app trong "Plugin theo app", tiêu đề các thẻ) thì bảng được lọc và **trang cuộn tới bảng**. Bộ lọc đang bật hiện thành chip phía trên bảng, bấm ✕ để bỏ.
+
+## Xoá
+
+**Mọi mục hiện trên dashboard đều xoá được**, trừ những chỗ macOS khoá: phần hệ thống được SIP bảo vệ (`/System`, `/usr` ngoài `/usr/local`, `/bin`, `/sbin` — app và plugin có sẵn của macOS), thư mục gốc (`/Applications`, `~`, `~/Documents`, `~/Library`…), và thư mục Mac Cleaner đang chạy trên đó. Những mục này có nút xoá mờ kèm lý do.
+
+- **Từng mục:** nút **🗑** trên mỗi dòng của bảng, của "Lớn nhất" và "Git repos" (nút **ⓘ** để xem chi tiết). Hộp thoại có đường dẫn, loại, dung lượng, cách xoá, **Xem trước** và **Hiện trong Finder**. Mục `an toàn` xoá ngay; mục `cân nhắc` phải tick xác nhận; mục `kiểm kê`/`bảo vệ` (app, repo, plugin, backup mới nhất…) phải tick xác nhận và có cảnh báo theo loại (repo còn thay đổi chưa commit, plugin trong bundle app khác, app cài bằng quyền admin…).
+- **Cả nhóm:** nút 🗑 cạnh mỗi app trong "App chiếm cache" (mọi cache của app đó) và "Plugin theo app".
+- **Xoá toàn bộ** (cạnh Log, Quét lại): xoá mọi mục đang hiện trong bảng theo nhóm và bộ lọc hiện tại. Mặc định chỉ gồm mục dọn được (`an toàn` + `cân nhắc`); tick thêm để gồm cả mục kiểm kê/bảo vệ.
+- **Chọn nhiều:** checkbox trên mỗi dòng → thanh dưới đáy có **Xem trước** và **Xoá → Thùng rác**.
+- **Thùng rác:** mục Thùng rác trong Junk có nút **Đổ Thùng rác** riêng (xoá vĩnh viễn, phải tick xác nhận; macOS có thể hỏi quyền cho Mac Cleaner điều khiển Finder). Thùng rác không bao giờ gộp vào xoá hàng loạt.
+
+Mọi thứ khác đều **chuyển vào Thùng rác**, khôi phục được cho tới khi đổ. LaunchAgent được ngừng (`launchctl bootout`) trước khi chuyển plist vào Thùng rác. Mỗi mục được kiểm lại ngay trước khi xoá. Trong report HTML tĩnh, nút xoá copy lệnh `clean --ids …` (thêm `--force` nếu có mục kiểm kê) để dán vào Terminal.
 
 ## Terminal log
 
@@ -61,13 +74,15 @@ Plugin có hook `PreToolUse`: trước khi agent chạy lệnh **xoá thật** �
 | Mức | Ý nghĩa | Ví dụ |
 |---|---|---|
 | `safe` | dọn không mất dữ liệu, app tự tạo lại | `~/Library/Caches/*` (cache của macOS `com.apple.*` để mức `review`), `~/Library/Logs/*`, cache trong Containers, DerivedData, simulator unavailable, backup cũ (đã có bản mới hơn), extension editor obsolete |
-| `review` | dọn được nhưng nên xem | build artifact (node_modules, Pods, .venv…), installer .dmg/.pkg/.xip, iOS DeviceSupport, Archives, `~/.cache/*`, bản extension cũ, leftover app, `/Library/Caches` |
-| `info` | chỉ kiểm kê | ứng dụng, plugin, extension đang dùng, git, backup mới nhất |
-| `protected` | không bao giờ dọn | Keychains, `~/.ssh`, `~/.gnupg`; **mọi thư mục trong `~/Library` ngoài** `Caches`, `Logs`, `Containers`, `Group Containers`, `Preferences`, `Developer` (dữ liệu ứng dụng, thư mục đồng bộ…); **mọi thư mục ẩn ở home ngoài** vùng cache `~/.cache`, `~/.npm`, `~/.gradle/caches` (dữ liệu, model, cấu hình của các tool) |
+| `review` | dọn được nhưng nên xem | build artifact (node_modules, Pods, .venv…), installer .dmg/.pkg/.xip, iOS DeviceSupport, Archives, `~/.cache/*`, bản extension cũ, leftover app (Containers, Preferences, `Application Support/<bundle id>` của app không còn cài), LaunchAgent mồ côi (chương trình của nó không còn), `/Library/Caches` |
+| `info` | kiểm kê (xoá được khi chọn đích danh) | ứng dụng, plugin, extension đang dùng, git, backup mới nhất |
+| `protected` | không dọn tự động (chỉ khi chọn đích danh) | Keychains, `~/.ssh`, `~/.gnupg`; **mọi thư mục trong `~/Library` ngoài** `Caches`, `Logs`, `Containers`, `Group Containers`, `Preferences`, `Developer` (dữ liệu ứng dụng, thư mục đồng bộ…); **mọi thư mục ẩn ở home ngoài** vùng cache `~/.cache`, `~/.npm`, `~/.gradle/caches` (dữ liệu, model, cấu hình của các tool) |
 
 `clean` **kiểm lại từng mục lúc chạy** (không tin report): phải là `safe`/`review`, còn tồn tại, không protected,
 nằm trong `~` (sâu ≥ 2 cấp) hoặc `/Library/Caches`, `/Library/Logs`; lệnh đặc biệt chỉ cho phép `xcrun simctl delete`.
-Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash`) — khôi phục được; đổ Thùng rác để lấy lại dung lượng. Mỗi lần dọn ghi `logs/clean-<ts>.jsonl`.
+`--force` (chỉ đi kèm `--ids`, tức là chọn đích danh) bỏ qua mức an toàn và vùng bảo vệ nhưng **vẫn chặn cứng** SIP, thư mục gốc
+và thư mục Mac Cleaner đang dùng; với mục Thùng rác thì `--force` nghĩa là đổ Thùng rác.
+Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13–14 chuyển thẳng vào `~/.Trash`) — khôi phục được; đổ Thùng rác để lấy lại dung lượng. Mỗi lần dọn ghi `logs/clean-<ts>.jsonl`.
 
 ## Nguồn dữ liệu
 

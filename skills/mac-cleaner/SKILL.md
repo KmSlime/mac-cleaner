@@ -13,11 +13,11 @@ Dùng CLI `mac-cleaner` (do `./install.sh` cài vào `~/.local/bin`; report dùn
    - thuộc Apple/hệ thống (Podcasts, CUPS…) hoặc dùng chung (Office group container, Sparkle, Keystone) → giữ;
    - dữ liệu nhạy cảm (authenticator, ví, ngân hàng) → giữ và hỏi.
 3. **Xem trước:** `mac-cleaner clean --ids <id,…> [--include-review]` (không `--yes` = chỉ preview).
-4. **Chỉ dọn khi người dùng ra lệnh:** thêm `--yes`. Mọi thứ vào Thùng rác; log ở `~/Library/Application Support/MacCleaner/logs/`. Báo dung lượng trước/sau (`df -h /System/Volumes/Data`) và mục bị `skip`.
+4. **Chỉ dọn khi người dùng ra lệnh:** thêm `--yes`. Mục kiểm kê/bảo vệ (app, repo, plugin, backup mới nhất, dữ liệu trong `~/Library/Application Support`, LaunchAgent…) chỉ xoá khi người dùng **chỉ đích danh** → `--ids <id> --force --yes` (vẫn bị chặn cứng: SIP, thư mục gốc). Mục ngoài report (file người dùng chỉ ra) thì chạy `mac-cleaner scan` trước để có id, hoặc dùng `trash <đường dẫn>`. Mọi thứ vào Thùng rác; log ở `~/Library/Application Support/MacCleaner/logs/`. Báo dung lượng trước/sau (`df -h /System/Volumes/Data`) và mục bị `skip`.
 5. **Dashboard:** `open ~/Applications/MacCleaner.app` (giao diện đọc report mới nhất; nút Quét lại / Dọn trong app).
 
 ## Không bao giờ
-- Đổ Thùng rác, dọn mục `protected`, hay dùng `sudo` khi người dùng chưa nói rõ.
+- Đổ Thùng rác (mục Thùng rác + `--force`), dọn mục `protected`/`info`, hay dùng `sudo` khi người dùng chưa nói rõ.
 - Dán đường dẫn/danh sách app của người dùng ra ngoài máy (report là dữ liệu cá nhân).
 
 Dọn cache/log sâu hơn ở cấp app: skill `mole`.
