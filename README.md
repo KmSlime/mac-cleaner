@@ -42,6 +42,10 @@ python3 -m unittest discover tests               # unit test
 Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 5.9+ cho app. Không có dependency ngoài.
 App `.app` ghi report/log vào `~/Library/Application Support/MacCleaner`; `swift run`/CLI ghi cạnh source (`reports/`, `logs/`, đã gitignore).
 
+## Xoá từng mục
+
+Mỗi dòng trong bảng có nút **ⓘ** (chi tiết) và **🗑** (xoá). Nút xoá mở hộp thoại riêng cho mục đó: đường dẫn, loại, app sở hữu, dung lượng, ghi chú, cách dọn, kèm **Xem trước**, **Hiện trong Finder** và **Chuyển vào Thùng rác**. Mục mức `cân nhắc` phải tick "Tôi đã xem, vẫn muốn dọn" mới xoá được; mục `bảo vệ`/`kiểm kê` có nút xoá mờ kèm lý do. Mục vẫn được kiểm lại an toàn ngay trước khi dọn, và chỉ chuyển vào Thùng rác. Trong report HTML tĩnh, nút xoá copy lệnh `clean --ids …` để dán vào Terminal.
+
 ## Terminal log
 
 Nút **Log** (⌘L) mở bảng log ở đáy app: lệnh đang chạy, từng bước quét kèm số mục và thời gian, nhịp báo trong các bước dài (duyệt home, tìm backup trên toàn ổ, đo dung lượng), từng mục khi dọn, và lỗi nếu có. Lần mở đầu tiên (chưa có report) app tự quét và tự mở log. Log cũng ghi ra `~/Library/Application Support/MacCleaner/logs/app-<ngày>.log`; nút **Copy** để gửi khi cần báo lỗi.

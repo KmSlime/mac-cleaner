@@ -112,6 +112,14 @@ th:last-child, td:last-child { padding-right: 24px; }
 td { text-align: right; padding: 11px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th.l, td.l { text-align: left; }
 tbody tr { cursor: pointer; }
+td.ra { white-space: nowrap; text-align: right; width: 76px; }
+td.ra button { width: 28px; height: 28px; border-radius: 7px; color: var(--faint); display: inline-grid; place-items: center; vertical-align: middle; }
+td.ra button:hover:not(:disabled) { background: var(--card2); color: var(--text); }
+td.ra button.del:hover:not(:disabled) { color: var(--red); }
+td.ra button:disabled { opacity: .28; cursor: not-allowed; }
+td.ra svg { width: 15px; height: 15px; }
+.warn { margin: 14px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: rgba(251, 191, 36, .08); color: var(--amber); }
+.ack { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--dim); margin: 10px 0 4px; }
 tbody tr:hover { background: var(--hover); }
 td.s { white-space: normal; max-width: 0; width: 50%; text-align: left; }
 td.s .n, td.s .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -235,7 +243,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
     <div class="chips" id="kinds"></div>
     <div class="scroll">
       <table>
-        <thead><tr><th><input type="checkbox" id="pageall" aria-label="Chọn tất cả mục đang hiện"></th><th class="l">Mục</th><th class="l o">Thuộc</th><th class="v">Phiên bản</th><th>Dung lượng</th><th>Mức</th></tr></thead>
+        <thead><tr><th><input type="checkbox" id="pageall" aria-label="Chọn tất cả mục đang hiện"></th><th class="l">Mục</th><th class="l o">Thuộc</th><th class="v">Phiên bản</th><th>Dung lượng</th><th>Mức</th><th aria-label="Thao tác"></th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="more" id="more"></div>
@@ -288,6 +296,11 @@ function fSize(n) {
 const fWhen = t => new Date(t).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
 const catOf = k => CATS.find(c => c.key === k) || { label: k, color: '#888' };
 const cleanable = i => i.safety === 'safe' || i.safety === 'review';
+const whyNot = i => i.safety === 'protected' ? 'Được bảo vệ — không dọn' + (i.note ? ' (' + i.note + ')' : '') : 'Chỉ kiểm kê — không dọn được';
+const ICON = {
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>'
+};
 const byId = {};
 
 function view() {
@@ -393,7 +406,8 @@ function renderTable() {
     <td>${cleanable(i) ? `<input type="checkbox" data-x="${i.id}" ${S.sel.has(i.id) ? 'checked' : ''} aria-label="Chọn ${esc(i.name)}">` : ''}</td>
     <td class="s"><div class="n" title="${esc(i.name)}"><span class="dot" style="display:inline-block;margin-right:7px;background:${catOf(i.category).color}"></span>${esc(i.name)}</div><div class="m" title="${esc(i.path)}">${esc(i.path)}</div></td>
     <td class="o" title="${esc(i.owner)}">${esc(i.owner)}</td><td class="num v">${esc(i.version)}</td><td class="num">${fSize(i.size)}</td>
-    <td><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Không có mục nào khớp</td></tr>';
+    <td><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span></td>
+    <td class="ra"><button data-info="${i.id}" title="Chi tiết" aria-label="Chi tiết ${esc(i.name)}">${ICON.info}</button><button class="del" data-del="${i.id}" ${cleanable(i) ? '' : 'disabled'} title="${cleanable(i) ? 'Xoá (chuyển vào Thùng rác)…' : esc(whyNot(i))}" aria-label="Xoá ${esc(i.name)}">${ICON.trash}</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Không có mục nào khớp</td></tr>';
   $('#more').innerHTML = rows.length > S.limit ? `<button class="btn" id="showmore">Hiện thêm (${rows.length - S.limit} mục)</button>` : '';
   const sel = shown.filter(cleanable);
   $('#pageall').checked = sel.length > 0 && sel.every(i => S.sel.has(i.id));
@@ -444,8 +458,11 @@ function openItem(id) {
     <div class="actions">
       <button class="btn" data-reveal="${esc(i.path)}">${inApp() ? 'Hiện trong Finder' : 'Copy đường dẫn'}</button>
       <button class="btn" data-copy="${esc(i.path)}">Copy đường dẫn</button>
-      ${cleanable(i) ? `<button class="btn" data-toggle="${i.id}">${S.sel.has(i.id) ? 'Bỏ chọn' : 'Chọn để dọn'}</button>` : ''}
+      ${cleanable(i) ? `<button class="btn" data-toggle="${i.id}">${S.sel.has(i.id) ? 'Bỏ chọn' : 'Chọn để dọn'}</button>
+      <button class="btn" data-prev="${i.id}">Xem trước</button>
+      <button class="btn danger" data-del="${i.id}">Chuyển vào Thùng rác…</button>` : ''}
     </div>
+    ${cleanable(i) ? '' : `<div class="sub" style="color:var(--faint)">${esc(whyNot(i))}.</div>`}
     <dl class="kv">
       <dt>Đường dẫn</dt><dd>${esc(i.path)}</dd>
       <dt>Thuộc</dt><dd>${esc(i.owner || '—')}</dd>
@@ -463,15 +480,45 @@ function cleanCmd(ids) {
   return `python3 ${JSON.stringify(root + '/maccleaner.py')} clean --report ${JSON.stringify(S.data.reportPath)} --ids ${ids.join(',')} --yes`;
 }
 
-function confirmClean(yes) {
-  const items = [...S.sel].map(id => byId[id]).filter(Boolean).sort((a, b) => (b.size || 0) - (a.size || 0));
+function confirmClean(yes, ids) {
+  const items = (ids || [...S.sel]).map(id => byId[id]).filter(Boolean).sort((a, b) => (b.size || 0) - (a.size || 0));
+  if (!items.length) return;
   if (!inApp()) { copy(cleanCmd(items.map(i => i.id))); toast('Đã copy lệnh — dán vào Terminal để dọn'); return; }
-  if (!yes) { S.busy = true; post('clean:' + JSON.stringify({ ids: items.map(i => i.id), yes: false })); toast('Đang xem trước…'); return; }
+  S.lastIds = items.map(i => i.id);  // "Tiếp tục dọn" / "Dọn ngay" dùng ĐÚNG danh sách này, không phải vùng chọn hiện tại
+  if (!yes) { S.busy = true; post('clean:' + JSON.stringify({ ids: S.lastIds, yes: false })); toast('Đang xem trước…'); return; }
   drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">Xác nhận dọn</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
     <h2>Chuyển ${items.length} mục (${fSize(sum(items, i => i.size))}) vào Thùng rác?</h2>
     <div class="sub">Khôi phục được từ Thùng rác cho tới khi đổ. Simulator hỏng được xoá bằng <code>xcrun simctl delete</code>. Mỗi mục được kiểm lại trước khi dọn.</div>
     <div class="actions" style="margin:18px 0"><button class="btn danger" id="go">Dọn ngay</button><button class="btn" id="close2">Huỷ</button></div>
     <div class="sec">Danh sách</div>${items.map(i => `<div class="res"><span class="st ${i.safety === 'safe' ? 'ok' : 'dry-run'}">${fSize(i.size)}</span>${esc(i.path)}</div>`).join('')}`);
+}
+
+/// Hộp thoại xoá MỘT mục: chi tiết + xem trước + chuyển vào Thùng rác. Mục "cân nhắc" phải tick xác nhận.
+function confirmOne(id) {
+  const i = byId[id]; if (!i) return;
+  if (!cleanable(i)) { toast(whyNot(i)); return openItem(id); }
+  if (!inApp()) { copy(cleanCmd([id])); toast('Đã copy lệnh dọn mục này — dán vào Terminal'); return; }
+  S.lastIds = [id];
+  const review = i.safety === 'review';
+  drawer(`<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;color:var(--dim)">Xoá mục</span><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
+    <h2>${esc(i.name)}</h2>
+    <dl class="kv">
+      <dt>Đường dẫn</dt><dd>${esc(i.path)}</dd>
+      <dt>Loại</dt><dd>${catOf(i.category).label} · ${esc(i.kind)}</dd>
+      <dt>Thuộc</dt><dd>${esc(i.owner || '—')}</dd>
+      <dt>Dung lượng</dt><dd>${fSize(i.size)}</dd>
+      <dt>Ghi chú</dt><dd>${esc(i.note || '—')}</dd>
+      <dt>Cách dọn</dt><dd>${Array.isArray(i.action) ? esc(i.action.join(' ')) : 'chuyển vào Thùng rác (khôi phục được cho tới khi đổ Thùng rác)'}</dd>
+    </dl>
+    ${review ? `<div class="warn">Mục mức <b>cân nhắc</b>: dọn được nhưng có thể là dữ liệu bạn còn cần (build, installer, file sót lại của app…). Xem trước hoặc mở trong Finder để kiểm.</div>
+    <label class="ack"><input type="checkbox" id="ackone"> Tôi đã xem, vẫn muốn dọn mục này</label>` : ''}
+    <div class="actions" style="margin:18px 0">
+      <button class="btn danger" id="goone" data-id="${i.id}" ${review ? 'disabled' : ''}>Chuyển vào Thùng rác</button>
+      <button class="btn" data-prev="${i.id}">Xem trước</button>
+      <button class="btn" data-reveal="${esc(i.path)}">Hiện trong Finder</button>
+      <button class="btn" id="close2">Huỷ</button>
+    </div>
+    <div class="sub">Mục được kiểm lại an toàn ngay trước khi dọn (còn tồn tại, không thuộc vùng bảo vệ). Log ghi ở Terminal log.</div>`);
 }
 
 window.cleaned = res => {
@@ -504,7 +551,7 @@ function copy(t) { if (inApp()) post('copy:' + t); else navigator.clipboard?.wri
 document.addEventListener('click', e => {
   if (e.target.matches('input[data-x]')) { const id = e.target.dataset.x; e.target.checked ? S.sel.add(id) : S.sel.delete(id); renderSel(); renderTable(); return; }
   if (e.target.id === 'pageall') { for (const i of view().sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, S.limit).filter(cleanable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderTable(); return; }
-  const t = e.target.closest('[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],#close,#close2,#veil,#rescan,#theme,#logbtn,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#go,#goconfirm');
+  const t = e.target.closest('[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#close,#close2,#veil,#rescan,#theme,#logbtn,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#go,#goconfirm');
   if (!t) return;
   const id = t.id;
   if (id === 'close' || id === 'close2' || id === 'veil') return closeDrawer();
@@ -518,8 +565,13 @@ document.addEventListener('click', e => {
   if (id === 'selall') { for (const i of view().filter(i => i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderTable(); }
   if (id === 'selclear') { S.sel.clear(); renderSel(); return renderTable(); }
   if (id === 'preview') return confirmClean(false);
-  if (id === 'doclean' || id === 'goconfirm') return confirmClean(true);
-  if (id === 'go') { S.busy = true; post('clean:' + JSON.stringify({ ids: [...S.sel], yes: true })); drawer('<h2><span class="busy"></span>Đang dọn…</h2>'); return; }
+  if (id === 'doclean') return confirmClean(true);
+  if (id === 'goconfirm') return (S.lastIds && S.lastIds.length === 1) ? confirmOne(S.lastIds[0]) : confirmClean(true, S.lastIds);
+  if (id === 'goone') { const x = t.dataset.id; S.lastIds = [x]; S.busy = true; post('clean:' + JSON.stringify({ ids: [x], yes: true })); drawer('<h2><span class="busy"></span>Đang dọn…</h2><div class="sub">Tiến độ ở Terminal log.</div>'); return; }
+  if (t.dataset.del != null) return confirmOne(t.dataset.del);
+  if (t.dataset.info != null) return openItem(t.dataset.info);
+  if (t.dataset.prev != null) return confirmClean(false, [t.dataset.prev]);
+  if (id === 'go') { S.busy = true; post('clean:' + JSON.stringify({ ids: S.lastIds || [...S.sel], yes: true })); drawer('<h2><span class="busy"></span>Đang dọn…</h2>'); return; }
   if (t.dataset.copy != null) { copy(t.dataset.copy); toast('Đã copy'); return; }
   if (t.dataset.reveal != null) { inApp() ? post('reveal:' + t.dataset.reveal) : (copy(t.dataset.reveal), toast('Đã copy đường dẫn')); return; }
   if (t.dataset.toggle != null) { const x = t.dataset.toggle; S.sel.has(x) ? S.sel.delete(x) : S.sel.add(x); renderSel(); renderTable(); return openItem(x); }
@@ -531,6 +583,7 @@ document.addEventListener('click', e => {
   else if (t.dataset.pq != null) { S.cat = 'plugins'; S.kind = null; S.q = t.dataset.pq; $('#q').value = S.q; }
   draw();
 });
+document.addEventListener('change', e => { if (e.target.id === 'ackone') $('#goone').disabled = !e.target.checked; });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeDrawer();
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); setTerm(!$('#term').classList.contains('on')); }
