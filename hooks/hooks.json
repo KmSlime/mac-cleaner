@@ -1,0 +1,13 @@
+{
+  "description": "Hỏi người dùng trước khi mac-cleaner / Mole xoá thật hoặc đụng tới Thùng rác.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/confirm-cleanup.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

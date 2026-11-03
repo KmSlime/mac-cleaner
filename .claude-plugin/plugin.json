@@ -1,0 +1,6 @@
+{
+  "name": "mac-cleaner",
+  "description": "Kiểm kê và dọn rác macOS an toàn: skill mac-cleaner (kiểm kê + dashboard), skill mole (dọn sâu bằng Mole) và hook bắt hỏi trước khi xoá thật.",
+  "version": "1.2.0",
+  "skills": "./skills"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "mac-cleaner",
+  "description": "Kiểm kê và dọn rác macOS an toàn.",
+  "owner": {
+    "name": "mac-cleaner"
+  },
+  "plugins": [
+    {
+      "name": "mac-cleaner",
+      "source": "./",
+      "description": "Kiểm kê và dọn rác macOS an toàn (skill mac-cleaner + mole)."
+    }
+  ]
+}
