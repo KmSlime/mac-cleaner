@@ -187,6 +187,68 @@ class Leftovers(unittest.TestCase):
             self.assertIsNone(mc.agent_program(p))
 
 
+class SafetyRails(unittest.TestCase):
+    """Rào an toàn học từ cách Mole vận hành (viết lại, không chép)."""
+    def test_hard_deny_roots_and_case_aliases(self):
+        for p in ["/SYSTEM/Library/x", "/etc/hosts", "/private/etc/hosts", "/var/db/x", "/Library/Keychains/k",
+                  "/Library/Extensions/x.kext", "/Users/Shared", "/Users/someoneelse", "/Library/Application Support",
+                  "/opt/homebrew", "/usr/local", "/Volumes",
+                  mc.HOME + "/Library/Caches/com.crowdstrike.falcon", "/Library/Application Support/com.jamf.x"]:
+            self.assertIsNotNone(mc.hard_deny(p), p)
+        for p in ["/usr/local/bin/thing", "/opt/homebrew/Cellar/x", "/Applications/Foo.app", mc.HOME + "/Library/Caches/x",
+                  "/Library/Application Support/SomeVendor"]:
+            self.assertIsNone(mc.hard_deny(p), p)
+
+    def test_live_data_caches_are_protected(self):
+        c = mc.HOME + "/Library/Caches/"
+        for p in [c + "pypoetry", c + "pypoetry/virtualenvs/x-py3.12", c + "com.apple.FontRegistry",
+                  c + "com.apple.Spotlight", c + "org.R-project.R/R/renv"]:
+            self.assertIsNotNone(mc.guard_reason(p), p)
+            self.assertEqual(mc.item("caches", "user-cache", "x", p, safety="safe", action="trash")["safety"], "protected")
+            self.assertIsNotNone(mc.validate(dict(id="x", path=p, safety="safe", action="trash")), p)
+        self.assertIsNone(mc.guard_reason(c + "com.spotify.client"))
+
+    def test_running_app_cache_detection(self):
+        r = {"com.microsoft.vscode"}
+        self.assertTrue(mc.cache_owner_running(mc.HOME + "/Library/Caches/com.microsoft.VSCode.ShipIt", r))
+        self.assertTrue(mc.cache_owner_running(mc.HOME + "/Library/Containers/com.microsoft.VSCode/Data/Library/Caches", r))
+        self.assertFalse(mc.cache_owner_running(mc.HOME + "/Library/Caches/com.microsoft.VSCodeInsiders", r))
+        self.assertFalse(mc.cache_owner_running(mc.HOME + "/Library/Logs/com.microsoft.VSCode", r))
+
+
+class OrphanDetection(unittest.TestCase):
+    """Nhận diện dữ liệu app đã gỡ: nghi ngờ thì giữ."""
+    def test_rules(self):
+        old_home, old_spot = mc.HOME, mc.spotlight_has_app
+        with tempfile.TemporaryDirectory() as h:
+            try:
+                mc.HOME = h
+                sup = os.path.join(h, "Library", "Application Support")
+                old = time.time() - 90 * 86400
+                names = {"com.gone.app": old, "com.gone.recent": time.time(), "com.bitwarden.desktop": old,
+                         "com.installed.app": old, "com.steam.game": old, "com.spotlight.broken": old,
+                         "groups.com.apple.podcasts": old}
+                for n, t in names.items():
+                    os.makedirs(os.path.join(sup, n))
+                    os.utime(os.path.join(sup, n), (t, t))
+                answers = {"com.steam.game": True, "com.spotlight.broken": None}
+                mc.spotlight_has_app = lambda bid: answers.get(bid, False)
+                items = mc.scan_junk([], [], [], ["com.installed.app"])
+                found = sorted(i["name"] for i in items if i["kind"] == "app-leftover")
+                self.assertEqual(found, ["com.gone.app"])
+            finally:
+                mc.HOME, mc.spotlight_has_app = old_home, old_spot
+
+    def test_recent_build_artifact_not_suggested(self):
+        with tempfile.TemporaryDirectory() as d:
+            fresh, stale = os.path.join(d, "a", "node_modules"), os.path.join(d, "b", "node_modules")
+            os.makedirs(fresh); os.makedirs(stale)
+            t = time.time() - 30 * 86400
+            os.utime(stale, (t, t))
+            items = {i["path"]: i for i in mc.scan_junk([fresh, stale], [], [], []) if i["kind"] == "build-artifact"}
+            self.assertEqual((items[fresh]["safety"], items[stale]["safety"]), ("info", "review"))
+
+
 class HomeWalk(unittest.TestCase):
     def test_finds_repos_artifacts_installers(self):
         with tempfile.TemporaryDirectory() as root:

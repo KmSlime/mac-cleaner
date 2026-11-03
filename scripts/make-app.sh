@@ -4,7 +4,7 @@
 #   ARCHS="arm64" ./scripts/make-app.sh   # một kiến trúc (nhanh hơn khi phát triển)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="1.5.0"
+VERSION="1.6.0"
 ARCHS="${ARCHS:-arm64 x86_64}"
 # Đổi đường dẫn tuyệt đối của máy build thành "." — binary phát hành không lộ username/thư mục.
 # (debug info bị `strip -S` bỏ hẳn bên dưới nên không cần -debug-prefix-map)
@@ -38,7 +38,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>MacCleaner</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleVersion</key><string>7</string>
+  <key>CFBundleVersion</key><string>8</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

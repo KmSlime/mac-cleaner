@@ -8,7 +8,7 @@
 #      KHÔNG chạy script cài của bên thứ ba.
 #   3. App "Mac Cleaner" (dashboard) → ~/Applications (bản build từ source, Universal).
 #   4. Lệnh `mac-cleaner` → ~/.local/bin (dùng chung report với app).
-#   5. Có Claude Code (`claude`) → cài plugin mac-cleaner (skill mac-cleaner + mole + hook xin duyệt) từ chính repo này.
+#   5. Có Claude Code (`claude`) → cài plugin mac-cleaner (skill mac-cleaner — gồm cả dọn sâu bằng Mole — + hook xin duyệt) từ chính repo này.
 # Không dùng sudo. Chạy lại bao nhiêu lần cũng được (bỏ qua bước đã xong).
 #   --no-app     bỏ build app       --no-mole    bỏ cài Mole       --no-plugin  bỏ plugin Claude Code
 set -euo pipefail
@@ -115,7 +115,7 @@ if [ "$DO_PLUGIN" = 1 ]; then
   if command -v claude >/dev/null 2>&1; then
     claude plugin marketplace add "$ROOT" >/dev/null 2>&1 || true
     if claude plugin install mac-cleaner@mac-cleaner >/dev/null 2>&1 || claude plugin list 2>/dev/null | grep -q 'mac-cleaner@mac-cleaner'; then
-      ok "skill mac-cleaner + mole + hook xin duyệt (mở phiên Claude Code mới để nạp)"
+      ok "skill mac-cleaner + hook xin duyệt (mở phiên Claude Code mới để nạp)"
     else
       warn "chưa cài được plugin — thử: claude plugin marketplace add \"$ROOT\" && claude plugin install mac-cleaner@mac-cleaner"
     fi

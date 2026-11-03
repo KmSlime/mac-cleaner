@@ -46,7 +46,37 @@ SIP_OK = ("/usr/local/",)
 HOME_FOLDERS = {"Library", "Documents", "Desktop", "Downloads", "Applications", "Movies", "Music", "Pictures", "Public"}
 # Mục "sót lại" nằm trong thư mục Library thường được bảo vệ, nhưng vẫn dọn được (mức cân nhắc)
 LEFTOVER_LIBRARY = ("Application Support", "LaunchAgents")
-TRASH_BIN = "/usr/bin/trash"  # có từ macOS 15; máy cũ hơn dùng phương án chuyển thẳng vào ~/.Trash
+TRASH_BIN = "/usr/bin/trash"
+
+# ---- Rào an toàn học từ cách Mole (tw93/mole) vận hành — viết lại theo ý, không chép mã/danh sách (Mole là GPL-3.0) ----
+# Thư mục gốc không bao giờ xoá dù đã chọn đích danh (so sánh không phân biệt hoa thường: APFS mặc định như vậy,
+# nên "/SYSTEM" cũng là "/System").
+DENY_TREES = ("/system/", "/usr/", "/bin/", "/sbin/", "/etc/", "/private/etc/", "/var/", "/private/var/",
+              "/library/apple/", "/library/keychains/", "/library/extensions/", "/dev/", "/cores/")
+DENY_TREE_OK = ("/usr/local/",)
+DENY_EXACT = {"/applications", "/library", "/library/application support", "/library/caches", "/library/logs",
+              "/users", "/users/shared", "/volumes", "/opt", "/opt/homebrew", "/usr/local", "/private", "/tmp"}
+# Nằm trong ~/Library/Caches nhưng là dữ liệu ĐANG DÙNG: xoá thì hỏng thứ khác chứ không chỉ phải tải lại.
+LIVE_DATA_CACHES = {
+    "pypoetry": "chứa virtualenv đang dùng của các project Poetry",
+    "org.r-project.r": "thư viện renv của project R trỏ vào đây",
+    "com.apple.fontregistry": "xoá làm hỏng hiển thị font của macOS",
+    "com.apple.spotlight": "xoá làm hỏng tìm kiếm Spotlight",
+}
+# Cache dọn được nhưng tải lại rất lâu → để "cân nhắc" kèm lý do.
+SLOW_REFETCH_CACHES = {"ms-playwright": "trình duyệt của Playwright — tải lại vài trăm MB",
+                       "jetbrains": "index của IDE JetBrains — mở project sẽ index lại rất lâu"}
+# Phần mềm bảo mật / quản lý thiết bị (EDR, MDM): xoá bất cứ gì của chúng có thể bị coi là can thiệp (tamper)
+# và báo động phía bảo mật công ty. Không bao giờ xoá; gỡ bằng trình gỡ của hãng.
+SECURITY_AGENT_IDS = ("com.crowdstrike", "com.sentinelone", "com.jamf", "com.jamfsoftware", "io.kandji", "com.kandji",
+                      "com.microsoft.wdav", "com.paloaltonetworks", "com.sophos", "com.trendmicro", "com.mcafee",
+                      "com.vmware.carbonblack", "com.carbonblack", "com.cisco.amp", "com.mosyle", "com.addigy",
+                      "com.jumpcloud", "com.zscaler", "com.netskope", "com.forcepoint", "com.tanium")
+# Tên chứa từ này → dữ liệu nhạy cảm (mật khẩu, khoá, ví): không bao giờ coi là "sót lại".
+SENSITIVE_WORDS = ("1password", "bitwarden", "lastpass", "keepass", "dashlane", "enpass", "keychain", "authenticator",
+                   "authy", "ssh", "gpg", "gnupg", "wallet", "ledger", "trezor", "electrum", "exodus", "metamask")
+ORPHAN_MIN_IDLE_DAYS = 30   # dữ liệu còn được ghi trong 30 ngày qua thì app chắc chắn còn dùng nó
+ARTIFACT_RECENT_DAYS = 7    # build artifact vừa dùng trong tuần → đang làm dự án, không đề xuất dọn  # có từ macOS 15; máy cũ hơn dùng phương án chuyển thẳng vào ~/.Trash
 
 ARTIFACT_DIRS = {"node_modules", "Pods", ".build", ".venv", "venv", "DerivedData", ".gradle", ".dart_tool",
                  ".next", ".nuxt", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".turbo", ".parcel-cache"}
@@ -118,9 +148,36 @@ def vkey(v):
     return tuple(int(x) for x in re.findall(r"\d+", v or ""))
 
 
+def guard_reason(path):
+    """Lý do giữ lại một mục dù vị trí của nó thường dọn được (cache là dữ liệu sống, phần mềm bảo mật), hoặc None."""
+    low = path.lower()
+    if security_agent(low):
+        return "thuộc phần mềm bảo mật/quản lý thiết bị — xoá có thể bị coi là can thiệp; gỡ bằng trình gỡ của hãng"
+    caches = os.path.join(HOME, "Library", "Caches").lower() + "/"
+    if low.startswith(caches):
+        top = low[len(caches):].split("/")[0]
+        for k, why in LIVE_DATA_CACHES.items():
+            if top == k or top.startswith(k + "."):
+                return why
+    return None
+
+
+def security_agent(low_path):
+    return any(f"/{i}" in low_path or f".{i}" in low_path for i in SECURITY_AGENT_IDS)
+
+
+def idle_days(path):
+    try:
+        return (time.time() - os.lstat(path).st_mtime) / 86400
+    except OSError:
+        return None
+
+
 def item(category, kind, name, path, *, owner="", version="", safety="info", action=None, note="", size=None, **extra):
     if safety in CLEANABLE and is_protected(path, kind):
         safety, action, note = "protected", None, (note + " · " if note else "") + "được bảo vệ"
+    elif safety in CLEANABLE and (why := guard_reason(path)):
+        safety, action, note = "protected", None, why
     iid = hashlib.sha1(f"{category}|{kind}|{path}".encode()).hexdigest()[:10]
     return dict(id=iid, category=category, kind=kind, name=name, owner=owner, version=version, path=path,
                 size=size, safety=safety, action=action, note=note, **extra)
@@ -335,9 +392,11 @@ def scan_caches():
     items = []
     lib = os.path.join(HOME, "Library")
     for p in children(os.path.join(lib, "Caches")):
-        sysc = Path(p).name.startswith(SYSTEM_CACHE_PREFIX)
-        items.append(item("caches", "user-cache", Path(p).name, p, owner=Path(p).name, safety="review" if sysc else "safe",
-                          action="trash", note="cache của macOS — tự tạo lại" if sysc else ""))
+        n = Path(p).name
+        sysc = n.startswith(SYSTEM_CACHE_PREFIX)
+        slow = next((why for k, why in SLOW_REFETCH_CACHES.items() if n.lower().startswith(k)), None)
+        items.append(item("caches", "user-cache", n, p, owner=n, safety="review" if sysc or slow else "safe",
+                          action="trash", note=slow or ("cache của macOS — tự tạo lại" if sysc else "")))
     for p in children(os.path.join(lib, "Logs")):
         items.append(item("caches", "log", Path(p).name, p, owner=Path(p).name, safety="safe", action="trash"))
     for c in children(os.path.join(lib, "Containers")):
@@ -439,8 +498,12 @@ def find_backups(log=None):
 def scan_junk(artifacts, installers, backups, bundle_ids):
     items = []
     for p in artifacts:
-        items.append(item("junk", "build-artifact", Path(p).name, p, owner=Path(p).parent.name, safety="review",
-                          action="trash", note="tải/build lại được"))
+        d = idle_days(p)
+        recent = d is not None and d < ARTIFACT_RECENT_DAYS
+        items.append(item("junk", "build-artifact", Path(p).name, p, owner=Path(p).parent.name,
+                          safety="info" if recent else "review", action=None if recent else "trash",
+                          note=f"dùng trong {ARTIFACT_RECENT_DAYS} ngày qua — đang làm dự án này, không đề xuất dọn"
+                          if recent else "tải/build lại được"))
     for p in installers:
         items.append(item("junk", "installer", Path(p).name, p, owner="file cài đặt", safety="review", action="trash",
                           note="app đã cài thì không cần nữa"))
@@ -453,23 +516,37 @@ def scan_junk(artifacts, installers, backups, bundle_ids):
     lib = os.path.join(HOME, "Library")
     known = {b.lower() for b in bundle_ids if b}
 
-    def leftover(bid):
+    spotlight = {}
+
+    def leftover(bid, path):
+        """Dữ liệu của app đã gỡ? Lần lượt từ rẻ tới đắt; nghi ngờ thì GIỮ (không đoán là mồ côi)."""
         b = bid.lower()
-        return (re.fullmatch(r"[a-z0-9\-]+(\.[a-z0-9\-]+){2,}", b) and not b.startswith(("com.apple.", "group.com.apple.", "systemgroup.", "group.is.workflow", "is.workflow."))  # is.workflow = Shortcuts của Apple
-                and not any(k == b or k.startswith(b + ".") or b.startswith(k + ".") for k in known))
+        if not re.fullmatch(r"[a-z0-9\-]+(\.[a-z0-9\-]+){2,}", b) or "com.apple." in b or b.startswith(
+                ("systemgroup.", "group.is.workflow", "is.workflow.")):  # của Apple (kể cả groups.com.apple.*); is.workflow = Shortcuts
+            return False
+        if any(k == b or k.startswith(b + ".") or b.startswith(k + ".") for k in known):
+            return False                                      # app còn cài ở chỗ đã quét
+        if any(w in b for w in SENSITIVE_WORDS) or security_agent("/" + b):
+            return False                                      # mật khẩu / khoá / ví / phần mềm bảo mật
+        d = idle_days(path)
+        if d is None or d < ORPHAN_MIN_IDLE_DAYS:
+            return False                                      # còn được ghi gần đây → app vẫn đang dùng
+        if b not in spotlight:                                # app cài chỗ khác (Steam, ~/Downloads…)
+            spotlight[b] = spotlight_has_app(bid)
+        return spotlight[b] is False
     for p in children(os.path.join(lib, "Containers")) + children(os.path.join(lib, "Group Containers")):
         n = Path(p).name
         bid = n.split(".", 1)[1] if re.match(r"^[A-Z0-9]{10}\.", n) else n
-        if leftover(bid):
+        if leftover(bid, p):
             items.append(item("junk", "app-leftover", n, p, owner=bid, safety="review", action="trash",
-                              note="không thấy app nào có bundle id này"))
+                              note=f"không thấy app nào có bundle id này (kể cả qua Spotlight), {ORPHAN_MIN_IDLE_DAYS}+ ngày không dùng"))
     for p in children(os.path.join(lib, "Preferences")):
         n = Path(p).name
-        if n.endswith(".plist") and leftover(n[:-6]):
+        if n.endswith(".plist") and leftover(n[:-6], p):
             items.append(item("junk", "app-leftover", n, p, owner=n[:-6], safety="review", action="trash",
                               note="file cấu hình của app không còn cài"))
     for p in children(os.path.join(lib, "Application Support")):
-        if leftover(Path(p).name):
+        if leftover(Path(p).name, p):
             items.append(item("junk", "app-leftover", Path(p).name, p, owner=Path(p).name, safety="review", action="trash",
                               note="dữ liệu của app không còn cài (theo bundle id)"))
     for p in children(os.path.join(lib, "LaunchAgents")):
@@ -481,6 +558,43 @@ def scan_junk(artifacts, installers, backups, bundle_ids):
     items.append(item("junk", "trash", "Thùng rác", trash, owner="Finder",
                       note="đổ bằng Finder; terminal cần Full Disk Access để đo"))
     return items
+
+
+def spotlight_has_app(bid):
+    """Spotlight có thấy app mang bundle id này không: True / False; None khi Spotlight lỗi hay quá giờ (→ giữ lại)."""
+    try:
+        r = subprocess.run(["/usr/bin/mdfind", f"kMDItemCFBundleIdentifier == '{bid}'"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return bool(r.stdout.strip())
+
+
+def running_bundle_ids():
+    """Bundle id của các app đang chạy (từ đường dẫn tiến trình *.app/Contents/MacOS/…)."""
+    out, seen = set(), set()
+    for line in run(["/bin/ps", "-axo", "comm="], timeout=10).splitlines():
+        m = re.match(r"(.+?\.app)/Contents/MacOS/", line.strip())
+        if m and m.group(1) not in seen:
+            seen.add(m.group(1))
+            bid = plist(os.path.join(m.group(1), "Contents/Info.plist")).get("CFBundleIdentifier")
+            if bid:
+                out.add(bid.lower())
+    return out
+
+
+def cache_owner_running(path, running):
+    """Cache (~/Library/Caches/<id>, Containers/<id>/…/Caches) của một app đang chạy? Xoá lúc đó dễ hỏng dữ liệu app."""
+    lib = os.path.join(HOME, "Library").lower() + "/"
+    low = path.lower()
+    if not low.startswith(lib):
+        return False
+    parts = low[len(lib):].split("/")
+    if parts[0] not in ("caches", "containers") or len(parts) < 2:
+        return False
+    name = parts[1]
+    return any(name == r or name.startswith(r + ".") for r in running)
 
 
 def agent_program(path):
@@ -586,11 +700,18 @@ def write_reports(rep, out):
 
 # ---------- clean ----------
 def hard_deny(p):
-    """Chỗ không bao giờ xoá, kể cả --force: macOS khoá (SIP), thư mục gốc, hoặc thứ Mac Cleaner đang chạy trên đó."""
-    if p.startswith(SIP_ROOTS) and not p.startswith(SIP_OK):
+    """Chỗ không bao giờ xoá, kể cả --force: macOS khoá (SIP), thư mục gốc, phần mềm bảo mật, hoặc thứ Mac Cleaner
+    đang chạy trên đó. So sánh không phân biệt hoa thường (APFS)."""
+    low = p.rstrip("/").lower()
+    if (p.startswith(SIP_ROOTS) and not p.startswith(SIP_OK)) or (
+            (low + "/").startswith(DENY_TREES) and not (low + "/").startswith(DENY_TREE_OK)):
         return "thuộc hệ thống macOS (SIP khoá) — không xoá được"
-    if len(Path(p).parts) < 3 or p == HOME or HOME.startswith(p + "/"):
+    home = HOME.lower()
+    if (len(Path(p).parts) < 3 or low in DENY_EXACT or low == home or home.startswith(low + "/")
+            or re.fullmatch(r"/users/[^/]+", low)):
         return "thư mục gốc — không xoá"
+    if security_agent(low):
+        return "thuộc phần mềm bảo mật/quản lý thiết bị — chỉ gỡ bằng trình gỡ của hãng"
     if p.startswith(HOME + "/") and len(Path(p).relative_to(HOME).parts) == 1 and Path(p).name in HOME_FOLDERS:
         return "thư mục chuẩn của macOS — không xoá"
     for used in (os.path.realpath(sys.executable), ROOT, DATA):
@@ -627,6 +748,8 @@ def validate(it, force=False):
     if not force:
         if is_protected(p, it.get("kind", "")):
             return "đường dẫn được bảo vệ"
+        if why := guard_reason(p):
+            return why
         root = next((r for r in ALLOWED_ROOTS if p.startswith(r + "/")), None)
         if not root or len(Path(p).relative_to(root).parts) < (2 if root == HOME else 1):
             return "ngoài vùng cho phép dọn"
@@ -689,8 +812,11 @@ def clean(rep, chosen, yes=False, log=print, force=False):
     log_path = os.path.join(DATA, "logs", "clean-" + time.strftime("%Y%m%d-%H%M%S") + ".jsonl")
     if yes:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    running = running_bundle_ids() if yes else set()
     for it in chosen:
         why = validate(it, force)
+        if not why and yes and it.get("category") == "caches" and cache_owner_running(it.get("path", ""), running):
+            why = "app sở hữu cache đang chạy — đóng app rồi dọn lại"
         status = "skip" if why else "dry-run" if not yes else "ok"
         if not why and yes:
             err = run_action(it, action_of(it, force))

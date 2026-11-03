@@ -18,7 +18,7 @@ git clone https://github.com/KmSlime/mac-cleaner.git && cd mac-cleaner && ./inst
 | Mole (`mo`) | Homebrew nếu có; không thì tải bản phát hành `V1.68.0`, **kiểm sha256** rồi chép vào `~/.local/share/mole` + `~/.local/bin/mo` (không chạy script cài của bên thứ ba) |
 | App **Mac Cleaner** | Build Universal từ source → `~/Applications/MacCleaner.app`. Thiếu Python 3 thì app tự hỏi và mở trình cài |
 | Lệnh `mac-cleaner` | `~/.local/bin/mac-cleaner` — dùng chung report với app (`~/Library/Application Support/MacCleaner`) |
-| Plugin Claude Code | Có `claude` thì cài plugin `mac-cleaner` (skill `mac-cleaner` + `mole`, hook xin duyệt) từ chính repo; không có thì bỏ qua |
+| Plugin Claude Code | Có `claude` thì cài plugin `mac-cleaner` (skill `mac-cleaner` — kiểm kê + dọn sâu bằng Mole —, hook xin duyệt) từ chính repo; không có thì bỏ qua |
 
 Tuỳ chọn: `--no-app`, `--no-mole`, `--no-plugin`. Chỉ cần app: tải `.zip` ở trang Releases.
 Chỉ cần skill trong Claude Code (đã đăng nhập GitHub có quyền đọc repo): `/plugin install mac-cleaner --marketplace KmSlime/mac-cleaner`.
@@ -74,14 +74,19 @@ Plugin có hook `PreToolUse`: trước khi agent chạy lệnh **xoá thật** �
 | Mức | Ý nghĩa | Ví dụ |
 |---|---|---|
 | `safe` | dọn không mất dữ liệu, app tự tạo lại | `~/Library/Caches/*` (cache của macOS `com.apple.*` để mức `review`), `~/Library/Logs/*`, cache trong Containers, DerivedData, simulator unavailable, backup cũ (đã có bản mới hơn), extension editor obsolete |
-| `review` | dọn được nhưng nên xem | build artifact (node_modules, Pods, .venv…), installer .dmg/.pkg/.xip, iOS DeviceSupport, Archives, `~/.cache/*`, bản extension cũ, leftover app (Containers, Preferences, `Application Support/<bundle id>` của app không còn cài), LaunchAgent mồ côi (chương trình của nó không còn), `/Library/Caches` |
+| `review` | dọn được nhưng nên xem | build artifact (node_modules, Pods, .venv…; vừa dùng trong 7 ngày thì để `info`), cache tải lại rất lâu (`ms-playwright`, `JetBrains`), installer .dmg/.pkg/.xip, iOS DeviceSupport, Archives, `~/.cache/*`, bản extension cũ, leftover app (Containers, Preferences, `Application Support/<bundle id>` — chỉ khi không còn app, Spotlight cũng không thấy, và 30+ ngày không được ghi), LaunchAgent mồ côi (chương trình của nó không còn), `/Library/Caches` |
 | `info` | kiểm kê (xoá được khi chọn đích danh) | ứng dụng, plugin, extension đang dùng, git, backup mới nhất |
-| `protected` | không dọn tự động (chỉ khi chọn đích danh) | Keychains, `~/.ssh`, `~/.gnupg`; **mọi thư mục trong `~/Library` ngoài** `Caches`, `Logs`, `Containers`, `Group Containers`, `Preferences`, `Developer` (dữ liệu ứng dụng, thư mục đồng bộ…); **mọi thư mục ẩn ở home ngoài** vùng cache `~/.cache`, `~/.npm`, `~/.gradle/caches` (dữ liệu, model, cấu hình của các tool) |
+| `protected` | không dọn tự động (chỉ khi chọn đích danh) | cache đang là dữ liệu sống: `~/Library/Caches/pypoetry` (virtualenv), `org.R-project.R` (renv), `com.apple.FontRegistry`, `com.apple.Spotlight`; Keychains, `~/.ssh`, `~/.gnupg`; **mọi thư mục trong `~/Library` ngoài** `Caches`, `Logs`, `Containers`, `Group Containers`, `Preferences`, `Developer` (dữ liệu ứng dụng, thư mục đồng bộ…); **mọi thư mục ẩn ở home ngoài** vùng cache `~/.cache`, `~/.npm`, `~/.gradle/caches` (dữ liệu, model, cấu hình của các tool) |
 
 `clean` **kiểm lại từng mục lúc chạy** (không tin report): phải là `safe`/`review`, còn tồn tại, không protected,
 nằm trong `~` (sâu ≥ 2 cấp) hoặc `/Library/Caches`, `/Library/Logs`; lệnh đặc biệt chỉ cho phép `xcrun simctl delete`.
-`--force` (chỉ đi kèm `--ids`, tức là chọn đích danh) bỏ qua mức an toàn và vùng bảo vệ nhưng **vẫn chặn cứng** SIP, thư mục gốc
-và thư mục Mac Cleaner đang dùng; với mục Thùng rác thì `--force` nghĩa là đổ Thùng rác.
+`--force` (chỉ đi kèm `--ids`, tức là chọn đích danh) bỏ qua mức an toàn và vùng bảo vệ nhưng **vẫn chặn cứng**: SIP và
+cây hệ thống (`/System`, `/usr` ngoài `/usr/local`, `/etc`, `/var`, `/Library/Keychains`, `/Library/Extensions`…), thư mục gốc
+(`/Applications`, `/Library/Application Support`, `/Users/*`, `/Users/Shared`, `/opt/homebrew`…; so sánh không phân biệt hoa thường
+vì APFS), **phần mềm bảo mật / quản lý thiết bị** (EDR, MDM — xoá có thể bị coi là can thiệp), và thư mục Mac Cleaner đang dùng;
+với mục Thùng rác thì `--force` nghĩa là đổ Thùng rác. Cache của **app đang chạy** được bỏ qua (`skip`) — đóng app rồi dọn.
+Dữ liệu trình quản lý mật khẩu, keychain, ssh/gpg, ví, app xác thực không bao giờ bị coi là "sót lại".
+Các rào này học từ cách [Mole](https://github.com/tw93/mole) vận hành và được viết lại cho mac-cleaner (không chép mã).
 Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13–14 chuyển thẳng vào `~/.Trash`) — khôi phục được; đổ Thùng rác để lấy lại dung lượng. Mỗi lần dọn ghi `logs/clean-<ts>.jsonl`.
 
 ## Nguồn dữ liệu
@@ -95,7 +100,7 @@ Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13
 | caches | `~/Library/{Caches,Logs}`, `~/Library/Containers/*/Data/Library/Caches`, `/Library/{Caches,Logs}`, Xcode DerivedData/DeviceSupport/Archives, `simctl list devices unavailable`, `~/.npm`, `~/.gradle/caches`, `~/.cache/*`… |
 | junk | build artifact khi đi qua `~`, installer trong Downloads/Desktop/Documents, file backup trên toàn volume Data (`find -x`, gom theo thư mục + tên gốc, giữ bản mtime mới nhất), Containers/Preferences không khớp bundle id nào đang cài, Thùng rác |
 
-Bổ sung: [Mole](https://github.com/tw93/mole) (`mo clean`, skill `/mole`) dọn sâu hơn ở cấp app (Application Support caches, Homebrew cleanup…).
+Bổ sung: [Mole](https://github.com/tw93/mole) (`mo clean`) dọn sâu hơn ở cấp app (Application Support caches, Homebrew cleanup…) — skill `mac-cleaner` chỉ cách dùng cả hai. Lưu ý: `mo clean` **xoá hẳn**, còn mac-cleaner luôn chuyển vào Thùng rác.
 
 ## Giới hạn đã biết
 
@@ -111,7 +116,7 @@ Web/board.html                 toàn bộ UI (HTML/CSS/JS thuần, offline) — 
 Sources/MacCleaner/main.swift  cửa sổ AppKit + WKWebView, cầu nối JS → maccleaner.py
 scripts/make-app.sh            đóng gói .app Universal (arm64 + x86_64; ARCHS="arm64" để build nhanh)
 install.sh                     cài một lệnh: Command Line Tools, Mole, app, lệnh mac-cleaner, plugin Claude Code
-skills/                        skill mac-cleaner + mole (plugin Claude Code, manifest ở .claude-plugin/)
+skills/mac-cleaner/           skill duy nhất: kiểm kê + dọn bằng mac-cleaner và Mole (plugin Claude Code, manifest ở .claude-plugin/)
 hooks/                         hook xin duyệt: Claude phải hỏi trước khi dọn thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
 tests/test_maccleaner.py       unit test
 LICENSE                        MIT
