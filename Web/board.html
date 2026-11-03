@@ -42,6 +42,20 @@ aside * { -webkit-app-region: no-drag; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .foot { border-top: 1px solid var(--line); padding: 14px 8px 0; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--faint); }
 .foot div { flex: 1; }
+/* Terminal log */
+.term { position: fixed; left: 252px; right: 0; bottom: 0; height: 280px; background: var(--card); border-top: 1px solid var(--line2);
+        display: none; flex-direction: column; z-index: 30; box-shadow: 0 -12px 32px rgba(0,0,0,.25); }
+.term.on { display: flex; }
+.term .bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); }
+.term .bar b { color: var(--text); font-weight: 600; font-size: 13px; }
+.term .bar .fill { flex: 1; }
+.term .bar .btn { padding: 4px 10px; font-size: 12px; border-radius: 8px; }
+.term pre { margin: 0; flex: 1; overflow: auto; padding: 10px 16px 14px; font: 12px/1.6 var(--mono); color: var(--dim); white-space: pre-wrap; word-break: break-word; }
+.term pre .s { color: var(--text); font-weight: 600; margin-top: 6px; }
+.term pre .ok { color: var(--green); } .term pre .err { color: var(--red); } .term pre .cmd { color: var(--blue); }
+body.term-open main { padding-bottom: 320px; }
+body.term-open .toast { bottom: 300px; }
+#logbtn.live { border-color: var(--green); }
 .icon-btn { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: var(--dim); }
 .icon-btn:hover { background: var(--hover); color: var(--text); }
 
@@ -191,6 +205,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
       <button data-f="all" class="on">Tất cả</button><button data-f="safe">Dọn an toàn</button><button data-f="review">Cân nhắc</button><button data-f="info">Kiểm kê</button>
     </div>
     <div>
+      <button class="btn" id="logbtn" title="Terminal log (⌘L)">Log</button>
       <button class="btn" id="rescan">Quét lại</button>
       <div class="updated" id="updated"></div>
     </div>
@@ -236,6 +251,12 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
 
 <div id="selbar"><div class="t"><b id="selsize">0</b> · <span id="selcount">0 mục</span></div>
   <button class="btn" id="selclear">Bỏ chọn</button><button class="btn" id="preview">Xem trước</button><button class="btn danger" id="doclean">Dọn → Thùng rác</button></div>
+<section class="term" id="term" aria-label="Terminal log">
+  <div class="bar"><b>Terminal log</b><span id="termstat"></span><span class="fill"></span>
+    <button class="btn" id="termcopy">Copy</button><button class="btn" id="termclear">Xoá</button>
+    <button class="icon-btn" id="termclose" title="Đóng" aria-label="Đóng terminal log">✕</button></div>
+  <pre id="termout" aria-live="polite"></pre>
+</section>
 <div id="veil"></div>
 <aside id="drawer" role="dialog" aria-modal="true" aria-label="Chi tiết"></aside>
 <div class="toast" id="toast"></div>
@@ -291,9 +312,36 @@ function renderHeader() {
   $('#sub').textContent = `${S.data.host} · đĩa dùng ${fSize(d.used)} / ${fSize(d.total)}, trống ${fSize(d.free)} · quét ${S.data.items.length} mục trong ${S.data.seconds}s`;
   $('#updated').textContent = inApp() ? 'Quét lúc ' + fWhen(S.data.generatedAt) : 'Report tĩnh · dọn bằng lệnh được copy';
   document.querySelectorAll('#safety button').forEach(b => b.classList.toggle('on', b.dataset.f === S.f));
-  $('#rescan').disabled = S.busy;
-  $('#rescan').innerHTML = S.busy ? '<span class="busy"></span>Đang quét…' : 'Quét lại';
+  setBusy(S.busy);
 }
+
+// ---------- Terminal log ----------
+const LOG = [], LOG_MAX = 3000;
+function setBusy(on) {
+  $('#rescan').disabled = on;
+  $('#rescan').innerHTML = on ? '<span class="busy"></span>Đang quét…' : 'Quét lại';
+  $('#logbtn').classList.toggle('live', on);
+  $('#termstat').innerHTML = on ? '<span class="busy"></span> đang chạy' : '';
+}
+function setTerm(on) { $('#term').classList.toggle('on', on); document.body.classList.toggle('term-open', on); store.set('term', on ? '1' : '0'); }
+function logClass(l) {
+  if (l.startsWith('$ ')) return 'cmd';
+  if (/^\s*✗|Traceback|Error|lỗi/i.test(l)) return 'err';
+  if (/^\s*✓/.test(l)) return 'ok';
+  return l.startsWith('▸') ? 's' : '';
+}
+window.log = line => {
+  LOG.push(line); if (LOG.length > LOG_MAX) LOG.splice(0, LOG.length - LOG_MAX);
+  const pre = $('#termout'), stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 40;
+  const div = document.createElement('div'); div.className = logClass(line); div.textContent = line; pre.appendChild(div);
+  while (pre.childNodes.length > LOG_MAX) pre.removeChild(pre.firstChild);
+  if (stick) pre.scrollTop = pre.scrollHeight;
+  if (S.busy && line.startsWith('▸')) $('#sub').textContent = 'Đang quét: ' + line.slice(2);
+};
+window.scanStarted = first => {
+  S.busy = true; setBusy(true); setTerm(true);
+  $('#sub').textContent = first ? 'Chưa có report — đang quét lần đầu toàn máy (1–5 phút). Tiến độ ở Terminal log bên dưới.' : 'Đang quét lại…';
+};
 
 function renderKpis() {
   const it = S.data.items.filter(i => !S.cat || i.category === S.cat), d = S.data.disk;
@@ -442,7 +490,11 @@ window.cleaned = res => {
     <div class="sec">Chi tiết</div>${res.results.map(r => `<div class="res"><span class="st ${r.status}">${r.status}</span>${esc(r.path)}${r.reason ? ` <span style="color:var(--faint)">— ${esc(r.reason)}</span>` : ''}</div>`).join('')}`);
   draw();
 };
-window.scanFailed = msg => { S.busy = false; draw(); toast('Lỗi: ' + msg); };
+window.scanFailed = msg => {
+  S.busy = false; setBusy(false); setTerm(true);
+  if (S.data) draw(); else $('#sub').textContent = 'Quét lỗi — chi tiết ở Terminal log bên dưới. Bấm Quét lại để thử lại.';
+  toast('Lỗi: ' + msg);
+};
 
 function drawer(h) { $('#drawer').innerHTML = h; $('#drawer').classList.add('on'); $('#veil').classList.add('on'); $('#drawer').scrollTop = 0; }
 const closeDrawer = () => { $('#drawer').classList.remove('on'); $('#veil').classList.remove('on'); };
@@ -452,12 +504,16 @@ function copy(t) { if (inApp()) post('copy:' + t); else navigator.clipboard?.wri
 document.addEventListener('click', e => {
   if (e.target.matches('input[data-x]')) { const id = e.target.dataset.x; e.target.checked ? S.sel.add(id) : S.sel.delete(id); renderSel(); renderTable(); return; }
   if (e.target.id === 'pageall') { for (const i of view().sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, S.limit).filter(cleanable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderTable(); return; }
-  const t = e.target.closest('[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],#close,#close2,#veil,#rescan,#theme,#showmore,#selall,#selclear,#preview,#doclean,#go,#goconfirm');
+  const t = e.target.closest('[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],#close,#close2,#veil,#rescan,#theme,#logbtn,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#go,#goconfirm');
   if (!t) return;
   const id = t.id;
   if (id === 'close' || id === 'close2' || id === 'veil') return closeDrawer();
   if (id === 'theme') { const n = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = n; store.set('theme', n); return; }
-  if (id === 'rescan') { if (inApp()) { S.busy = true; post('scan'); renderHeader(); toast('Đang quét, mất vài phút…'); } else toast('Chạy: python3 maccleaner.py scan'); return; }
+  if (id === 'rescan') { if (inApp()) { post('scan'); toast('Đang quét, mất vài phút — xem Terminal log'); } else toast('Chạy: python3 maccleaner.py scan'); return; }
+  if (id === 'logbtn') return setTerm(!$('#term').classList.contains('on'));
+  if (id === 'termclose') return setTerm(false);
+  if (id === 'termclear') { LOG.length = 0; $('#termout').textContent = ''; return; }
+  if (id === 'termcopy') { copy(LOG.join('\n')); toast('Đã copy log'); return; }
   if (id === 'showmore') { S.limit += PAGE; return renderTable(); }
   if (id === 'selall') { for (const i of view().filter(i => i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderTable(); }
   if (id === 'selclear') { S.sel.clear(); renderSel(); return renderTable(); }
@@ -475,13 +531,17 @@ document.addEventListener('click', e => {
   else if (t.dataset.pq != null) { S.cat = 'plugins'; S.kind = null; S.q = t.dataset.pq; $('#q').value = S.q; }
   draw();
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDrawer();
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); setTerm(!$('#term').classList.contains('on')); }
+});
+if (inApp() && store.get('term') === '1') setTerm(true);
 $('#q').addEventListener('input', e => { S.q = e.target.value; S.limit = PAGE; renderTable(); });
 document.documentElement.dataset.theme = store.get('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 
 // Entry point: app gọi render(data) sau mỗi lần quét; report tĩnh nhúng sẵn window.EMBEDDED.
 window.render = data => {
-  S.data = data; S.busy = false;
+  S.data = data; S.busy = false; setBusy(false);
   for (const k in byId) delete byId[k];
   for (const i of data.items) byId[i.id] = i;
   for (const id of [...S.sel]) if (!byId[id]) S.sel.delete(id);

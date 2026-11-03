@@ -13,11 +13,13 @@ import hashlib
 import html
 import json
 import os
+import platform
 import plistlib
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -70,7 +72,7 @@ def run(cmd, timeout=60):
         return ""
 
 
-def du(paths):
+def du(paths, log=None):
     """Kích thước (byte) của nhiều path bằng một vài lệnh du (nhanh hơn walk Python)."""
     out = {}
     paths = [p for p in dict.fromkeys(paths) if os.path.lexists(p)]
@@ -79,6 +81,8 @@ def du(paths):
             k, _, p = line.partition("\t")
             if k.isdigit():
                 out[p] = int(k) * 1024
+        if log and len(paths) > 200:
+            log(f"  đo dung lượng: {min(i + 200, len(paths))}/{len(paths)}")
     return out
 
 
@@ -260,10 +264,15 @@ def scan_extensions():
 
 
 # ---------- home walk: git repos, artifacts, installers ----------
-def walk_home(roots=None):
+def walk_home(roots=None, log=None):
     repos, artifacts, installers = [], [], []
+    last, t0, seen = time.time(), time.time(), 0
     for root in roots or [HOME]:
         for d, dirs, files in os.walk(root):
+            seen += 1
+            if log and time.time() - last >= 3:
+                last = time.time()
+                log(f"  … {int(last - t0)}s, {seen} thư mục, {len(repos)} repo, {len(artifacts)} build artifact — {d[:90]}")
             rel_hidden = any(part.startswith(".") for part in os.path.relpath(d, root).split(os.sep) if part != ".")
             if ".git" in dirs or ".git" in files:
                 repos.append(d)
@@ -389,7 +398,7 @@ def group_backups(paths):
     return keep, old
 
 
-def find_backups():
+def find_backups(log=None):
     vol = DATA_VOL if os.path.isdir(os.path.join(DATA_VOL, "Users")) else "/"
     prune = ["*/node_modules", "*/.git", "*.app", "*.framework", "*/.Trash"]
     cmd = ["/usr/bin/find", "-x", vol, "("]
@@ -400,7 +409,22 @@ def find_backups():
     for i, p in enumerate(BACKUP_FIND):
         cmd += (["-o"] if i else []) + ["-iname", p]
     cmd += [")", "-print"]
-    out = run(cmd, timeout=1800).splitlines()
+    out, t0, done = [], time.time(), threading.Event()
+
+    def beat():  # nhịp đều kể cả khi find chưa thấy file nào (đoạn dài không có kết quả trông như treo)
+        while not done.wait(5):
+            where = f" — gần nhất: {os.path.dirname(out[-1])[:90]}" if out else ""
+            log(f"  … {int(time.time() - t0)}s, đã thấy {len(out)} file backup{where}")
+    if log:
+        threading.Thread(target=beat, daemon=True).start()
+    try:
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True) as pr:
+            for line in pr.stdout:
+                out.append(line.rstrip("\n"))
+    except OSError:
+        pass
+    finally:
+        done.set()
     return [p[len(DATA_VOL):] if p.startswith(DATA_VOL + "/") else p for p in out]
 
 
@@ -446,24 +470,41 @@ def scan_junk(artifacts, installers, backups, bundle_ids):
 def scan(log=print):
     t0 = time.time()
     steps = {}
-    log("• applications…"); steps["applications"] = scan_apps()
-    log("• plugins…"); steps["plugins"] = scan_plugins()
-    log("• extensions…"); steps["extensions"] = scan_extensions()
-    log("• home walk (git, artifacts, installers)…")
-    repos, artifacts, installers = walk_home()
+
+    def step(title, key, fn):
+        t = time.time()
+        log(f"▸ {title}…")
+        steps[key] = fn()
+        log(f"  ✓ {len(steps[key])} mục · {time.time() - t:.1f}s")
+
+    log(f"Quét {HOME} trên {os.uname().nodename} (macOS {platform.mac_ver()[0]}, {platform.machine()}), python {platform.python_version()}")
+    step("Ứng dụng", "applications", scan_apps)
+    step("Plugin", "plugins", scan_plugins)
+    step("Extension", "extensions", scan_extensions)
+    log("▸ Duyệt thư mục home (git, build artifact, installer)…")
+    log("  macOS có thể hỏi quyền truy cập Desktop/Documents/Downloads — bấm Cho phép để quét đủ.")
+    t = time.time()
+    repos, artifacts, installers = walk_home(log=log)
     repos += [r for r in ["/opt/homebrew"] if os.path.isdir(os.path.join(r, ".git"))]
-    steps["git"] = scan_git(repos)
-    log("• caches…"); steps["caches"] = scan_caches()
-    log("• backups (toàn volume)…")
+    log(f"  ✓ {len(repos)} repo, {len(artifacts)} build artifact, {len(installers)} installer · {time.time() - t:.1f}s")
+    step("Git repo", "git", lambda: scan_git(repos))
+    step("Cache và log", "caches", scan_caches)
+    log("▸ Tìm file backup trên toàn ổ (bước lâu nhất)…")
+    t = time.time()
+    backups = find_backups(log=log)
+    log(f"  ✓ {len(backups)} file backup · {time.time() - t:.1f}s")
     bundle_ids = [i.get("bundle_id", "") for i in steps["applications"] + steps["plugins"]]
-    steps["junk"] = scan_junk(artifacts, installers, find_backups(), bundle_ids)
+    step("Junk (artifact, installer, backup, file sót lại)", "junk", lambda: scan_junk(artifacts, installers, backups, bundle_ids))
     items = [i for v in steps.values() for i in v]
-    log("• đo dung lượng…")
-    sizes = du([i["path"] for i in items if i["kind"] not in ("binary", "repo", "app-extension")])
-    git_sizes = du([os.path.join(i["path"], ".git") for i in items if i["kind"] == "repo"])
+    log(f"▸ Đo dung lượng {len(items)} mục…")
+    t = time.time()
+    sizes = du([i["path"] for i in items if i["kind"] not in ("binary", "repo", "app-extension")], log=log)
+    git_sizes = du([os.path.join(i["path"], ".git") for i in items if i["kind"] == "repo"], log=log)
+    log(f"  ✓ {time.time() - t:.1f}s")
     for i in items:
         i["size"] = git_sizes.get(os.path.join(i["path"], ".git")) if i["kind"] == "repo" else sizes.get(i["path"])
     usage = shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/")
+    log(f"✓ Quét xong: {len(items)} mục trong {time.time() - t0:.0f}s")
     return dict(generatedAt=int(time.time() * 1000), host=os.uname().nodename, home=HOME,
                 disk=dict(total=usage.total, used=usage.used, free=usage.free),
                 seconds=round(time.time() - t0, 1), items=items)
@@ -593,9 +634,8 @@ def main(argv=None):
     c.add_argument("--yes", action="store_true", help="thực thi (không có: chỉ preview)")
     c.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    quiet = lambda *_: None
     if a.cmd == "scan":
-        rep = scan(log=(lambda m: print(m, file=sys.stderr)))
+        rep = scan(log=(lambda m: print(m, file=sys.stderr, flush=True)))
         stem = write_reports(rep, a.out)
         if a.json:
             print(json.dumps(rep, ensure_ascii=False))
@@ -608,7 +648,9 @@ def main(argv=None):
     rep = json.load(open(path, encoding="utf-8"))
     chosen = select(rep["items"], a.ids.split(",") if a.ids else None, a.category, a.include_review)
     before = shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
-    res = clean(rep, chosen, a.yes, log=quiet if a.json else print)
+    err = lambda m: print(m, file=sys.stderr, flush=True)
+    (err if a.json else print)(f"{'Dọn' if a.yes else 'Xem trước'} {len(chosen)} mục từ {os.path.basename(path)}…")
+    res = clean(rep, chosen, a.yes, log=err if a.json else print)  # --json: log ra stderr (app hiện ở terminal log)
     res["freeBefore"], res["freeAfter"] = before, shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
     if a.json:
         print(json.dumps(res, ensure_ascii=False))
