@@ -291,7 +291,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
   <button class="btn" id="selclear">Bỏ chọn</button><button class="btn" id="preview">Xem trước</button><button class="btn danger" id="doclean">Xoá → Thùng rác</button></div>
 <section class="term" id="term" aria-label="Terminal log">
   <div class="bar"><b>Terminal log</b><span id="termstat"></span><span class="fill"></span>
-    <button class="btn" id="termcopy">Copy</button><button class="btn" id="termclear">Xoá</button>
+    <button class="btn" id="termopen" title="Mở Terminal.app thật: xem log trực tiếp, Ctrl-C để gõ lệnh">Mở Terminal</button><button class="btn" id="termcopy">Copy</button><button class="btn" id="termclear">Xoá</button>
     <button class="icon-btn" id="termclose" title="Đóng" aria-label="Đóng terminal log">✕</button></div>
   <pre id="termout" aria-live="polite"></pre>
 </section>
@@ -700,7 +700,7 @@ document.addEventListener('click', e => {
   if (e.target.matches('input[data-x]')) { const id = e.target.dataset.x; e.target.checked ? S.sel.add(id) : S.sel.delete(id); renderSel(); renderTable(); return; }
   if (e.target.id === 'pageall') { for (const i of view().sort(bySize).slice(0, S.limit).filter(deletable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderTable(); return; }
   if (e.target.matches('#ackone, #ackbulk, #withextra')) return;  // xử lý ở 'change'
-  const t = e.target.closest('[data-tog],[data-ck],[data-kf],[data-goto],[data-unf],[data-delowner],[data-delplug],[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#gobulk,#prevbulk,#delall,#close,#close2,#veil,#rescan,#theme,#logbtn,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#goconfirm');
+  const t = e.target.closest('[data-tog],[data-ck],[data-kf],[data-goto],[data-unf],[data-delowner],[data-delplug],[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#gobulk,#prevbulk,#delall,#close,#close2,#veil,#rescan,#theme,#logbtn,#termopen,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#goconfirm');
   if (!t) return;
   const id = t.id, d = t.dataset;
   if (id === 'close' || id === 'close2' || id === 'veil') return closeDrawer();
@@ -709,6 +709,11 @@ document.addEventListener('click', e => {
   if (id === 'logbtn') return setTerm(!$('#term').classList.contains('on'));
   if (id === 'termclose') return setTerm(false);
   if (id === 'termclear') { LOG.length = 0; $('#termout').textContent = ''; return; }
+  if (id === 'termopen') {
+    if (inApp()) { post('terminal'); toast('Đang mở Terminal…'); }
+    else { copy('tail -n 200 -F "$(ls -t logs/*.log | head -1)"'); toast('Đã copy lệnh xem log — dán vào Terminal ở thư mục mac-cleaner'); }
+    return;
+  }
   if (id === 'termcopy') { copy(LOG.join('\n')); toast('Đã copy log'); return; }
   if (id === 'showmore') { S.limit += PAGE; return renderTable(); }
   if (id === 'selall') { for (const i of view().filter(i => i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderTable(); }

@@ -251,9 +251,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         else if body.hasPrefix("copy:") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(String(body.dropFirst(5)), forType: .string)
+        } else if body == "terminal" {
+            openRealTerminal()
         } else if body.hasPrefix("reveal:") {
             let url = URL(fileURLWithPath: String(body.dropFirst(7)))
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        }
+    }
+
+    /// Bật Terminal.app thật: script `.command` trong logs/ hiện log trực tiếp (`tail -F`), Ctrl-C → shell tương tác
+    /// ở thư mục dữ liệu để gõ lệnh mac-cleaner. Mở `.command` bằng Terminal nên không cần quyền Automation.
+    func openRealTerminal() {
+        let q = { (s: String) in "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let dir = dataDir.appendingPathComponent("logs")
+        let cmd = dir.appendingPathComponent("open-terminal.command")
+        let sh = """
+        #!/bin/zsh
+        cd \(q(dataDir.path)) 2>/dev/null || cd ~
+        printf '\\033]0;Mac Cleaner — log\\007'
+        printf '%s\\n' 'Mac Cleaner · log trực tiếp:' \(q(logFile.path))
+        printf '%s\\n' 'Ctrl-C để thôi xem log và dùng shell ở đây. Lệnh:' \(q("  python3 " + q(script.path) + " scan | clean | status …")) ''
+        trap ':' INT
+        tail -n 200 -F \(q(logFile.path))
+        trap - INT
+        echo
+        exec "${SHELL:-/bin/zsh}" -l
+
+        """
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try sh.write(to: cmd, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cmd.path)
+        } catch { log("✗ Không tạo được script mở Terminal: \(error.localizedDescription)"); return }
+        log("$ open -a Terminal \(cmd.path)")
+        let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+        NSWorkspace.shared.open([cmd], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            if let error { self.log("✗ Không mở được Terminal: \(error.localizedDescription)") }
         }
     }
 
