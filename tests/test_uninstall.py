@@ -376,5 +376,18 @@ class SafetyKind(unittest.TestCase):
         self.assertTrue(safety.is_protected(os.path.join(lib, "Saved Application State", "x"), "app-leftover"))
 
 
+class AppPathGuard(unittest.TestCase):
+    def test_rejects_dotdot_and_symlinked_parent(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as d:
+            d = os.path.realpath(d)
+            root, other = os.path.join(d, "Apps"), os.path.join(d, "Other")
+            os.makedirs(os.path.join(root, "Ok.app")); os.makedirs(os.path.join(other, "Bad.app"))
+            os.symlink(other, os.path.join(root, "link"))
+            home = os.path.join(d, "home"); os.makedirs(home)
+            self.assertTrue(U._app_path_ok(os.path.join(root, "Ok.app"), [root], home))
+            self.assertFalse(U._app_path_ok(root + "/../Other/Bad.app", [root], home))
+            self.assertFalse(U._app_path_ok(os.path.join(root, "link", "Bad.app"), [root], home))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -459,6 +459,8 @@ def _app_path_ok(p, roots, home):
     """Kiểm lại ngay trước khi xoá app (dùng --force của safety): phải là .app thật, ở thư mục app hay trong home."""
     if not p.endswith(".app") or os.path.islink(p) or not os.path.isdir(p) or S.hard_deny(p):
         return False
+    if os.path.realpath(p) != os.path.normpath(p) or os.path.normpath(p) != p.rstrip("/"):  # chặn "..", symlink ở thư mục cha
+        return False
     real = [os.path.realpath(r) for r in roots] + [os.path.realpath(home)]
     return any(p.startswith(r + "/") for r in real)
 
