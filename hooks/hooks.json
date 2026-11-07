@@ -1,5 +1,5 @@
 {
-  "description": "Hỏi người dùng trước khi mac-cleaner / Mole xoá thật hoặc đụng tới Thùng rác.",
+  "description": "Hỏi người dùng trước khi mac-cleaner làm thật (--yes: dọn, gỡ app, tắt khởi động, reset quyền, bảo trì), Mole xoá thật, hoặc đụng tới Thùng rác.",
   "hooks": {
     "PreToolUse": [
       {

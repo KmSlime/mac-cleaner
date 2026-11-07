@@ -22,6 +22,21 @@ Dòng có ghi **(đã kiểm)** là hành vi lệnh đã chạy thử, không su
 | R1 | https://thesweetbits.com/tools/cleanmymac/ | review độc lập, 2026-04: dọn cloud có từ 2025-07, 3 mức quét malware, menu bar |
 | R2 | https://allaboutcookies.org/cleanmymac-x-review | review độc lập, 2026-04, macOS Tahoe: quét malware không bắt được file thử EICAR, không có lịch quét |
 
+## 0. Trạng thái sau khi làm (cập nhật 2026-11-07)
+
+Cột "mac-cleaner" ở §1 ghi trạng thái **lúc nghiên cứu**, trước khi làm. Hiện tại mỗi nhóm đã có module trong
+`mclib/features/` (lệnh con `python3 maccleaner.py <lệnh>`; `scan` gom `collect()` vào `report["features"]`):
+
+| Nhóm §1 | Lệnh / module | Đã có | Còn chặn / để sau |
+|---|---|---|---|
+| 1a rác hệ thống mở rộng | `junk` (`junk.py`), dọn qua `clean --category junk:<kind>` (`mclib/featclean.py`) | cache trình duyệt/app (Chromium/Electron trong Application Support, hẹp), log container, plist hỏng, firmware `.ipsw`, cache CLI mới; bản sao lưu iOS, model AI, snapshot TM **chỉ liệt kê** | cache/log của root (✗ sudo), phiên bản tài liệu, user đã xoá, `.lproj`/`lipo` (C — không làm), mail/ảnh/nhạc |
+| 1b bảo vệ | `audit` (`persistence.py`), `privacy` (`privacy.py`) | kiểm kê bám trụ (LaunchAgents/Daemons, login item, BTM, cron) + `codesign -dv`/vé notarize/quarantine offline; `--gatekeeper` mới gọi `spctl`. Lịch sử/cookie/phiên trình duyệt, mục gần đây, TCC.db (liệt kê), `privacy reset` = `tccutil reset` (`--yes`) | quét malware bằng chữ ký (không có CSDL), giám sát thời gian thực, xoá dữ liệu trình duyệt (chỉ liệt kê), Wi-Fi |
+| 1c hiệu năng | `maintain` (`maintain.py`), `startup` (`startup.py`) | QuickLook cache, LaunchServices, snapshot TM (`--yes`); font cache user, brew cleanup chỉ in lệnh; `startup disable/enable` agent của user (`--yes`, log) | DNS, purge RAM, Spotlight, periodic, font hệ thống, xoá snapshot: cần sudo → chỉ in lệnh |
+| 1d ứng dụng | `uninstall` (`uninstall.py`), `updates` (`updates.py`) | gỡ app kèm file liên quan (Thùng rác, `--yes`), team container dùng chung, app lâu không mở (`--list`); cập nhật Sparkle/brew cask/macOS (chỉ liệt kê) | app root/`.pkg` chỉ in hướng dẫn; Spotlight có thể không ghi `kMDItemLastUsedDate` → lâu-không-mở kém chính xác; không tự cài cập nhật |
+| 1e file/cloud/theo dõi | `analyze`, `large` (`space.py`), `dupes` (`dupes.py`), `cloud` (`cloud.py`), `status` (`status.py`) | bản đồ dung lượng (trong `scan` giới hạn 15 s, `partial`), file lớn+cũ, file trùng (giữ ≥1 bản, `--prefer`), cloud local vs dataless (liệt kê); theo dõi ổ/RAM/swap/CPU/pin/mạng/thiết bị + cảnh báo | `large`/`dupes` chưa nối vào `clean`; ảnh gần giống (Vision) và evict iCloud cần app Swift; thông báo hệ thống |
+
+Mole không còn được dùng (`install.sh` không cài). Đường dẫn module ở §3 (`mclib/<tên>.py`) là kế hoạch ban đầu — thực tế nằm ở `mclib/features/`.
+
 ## 1. Bảng tính năng
 
 ### 1a. Dọn rác hệ thống, Thùng rác, mail/ảnh/nhạc

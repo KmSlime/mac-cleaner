@@ -63,7 +63,7 @@ FS_RULES = [
     ("~/.npm/_cacache", XOA, "cache npm", "tải lại khi cài"), ("~/.gradle/caches", XOA, "cache Gradle", "tải lại khi build"),
     ("~/Library/Caches/Homebrew", XOA, "bản tải của Homebrew", "dùng `brew cleanup` thay vì xoá tay"),
     ("~/Downloads", CAN, "file tải về", "xem từng file; .dmg/.pkg/.zip đã cài xong thì xoá được"),
-    ("/Applications", CAN, "ứng dụng", "gỡ app không dùng bằng `mo uninstall` (kèm file sót)"),
+    ("/Applications", CAN, "ứng dụng", "gỡ app không dùng bằng `mac-cleaner uninstall <app>` (kèm file liên quan)"),
     ("*/node_modules", XOA, "dependency JS", "`npm install` lại"), ("*/.build", XOA, "build Swift", "build lại"),
     ("*/Pods", XOA, "dependency CocoaPods", "`pod install` lại"), ("*/.venv", XOA, "môi trường Python", "tạo lại venv"),
     ("*/DerivedData", XOA, "build Xcode cục bộ", "build lại"), ("*/.gradle", XOA, "cache Gradle của dự án", "tải lại"),

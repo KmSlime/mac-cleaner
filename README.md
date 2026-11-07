@@ -35,7 +35,21 @@ python3 maccleaner.py clean --category caches --yes          # dọn thật mộ
 python3 maccleaner.py clean --ids a1b2c3d4e5,... --yes       # dọn đúng các id (lấy từ report/app)
 python3 maccleaner.py clean --include-review ...             # gồm cả mục "cân nhắc"
 python3 maccleaner.py clean --ids <id> --force --yes          # xoá đích danh cả mục kiểm kê/bảo vệ (app, repo, plugin…)
-python3 maccleaner.py status [--json]           # tình trạng máy: ổ đĩa, RAM, uptime (tính năng mẫu trong mclib/features/)
+python3 maccleaner.py clean --category junk:app-cache --yes # dọn mục của một tính năng (<tính năng>:<kind>)
+
+# Tính năng (mclib/features/) — mặc định chỉ đọc / xem trước; chỉ --yes mới làm thật (hook bắt hỏi duyệt)
+python3 maccleaner.py status [--json]                       # sức khoẻ máy: ổ, RAM/swap, CPU, pin, mạng, thiết bị, cảnh báo
+python3 maccleaner.py junk                                  # rác hệ thống mở rộng: cache trình duyệt/app, log container, plist hỏng…
+python3 maccleaner.py uninstall <tên|bundle id|.app> [--yes] # gỡ app kèm file liên quan (→ Thùng rác) · --list: app lâu không mở
+python3 maccleaner.py updates [--offline]                   # bản cập nhật app (Sparkle, Homebrew cask) + macOS — không cài
+python3 maccleaner.py analyze [path] [--depth 3]            # bản đồ dung lượng
+python3 maccleaner.py large [path…] --min 500M --older 180d # file lớn và lâu không dùng
+python3 maccleaner.py dupes [path…] --min-size 5M           # file trùng (luôn giữ một bản mỗi nhóm)
+python3 maccleaner.py cloud                                 # iCloud/Dropbox/…: bản local vs chỉ còn trên cloud
+python3 maccleaner.py startup list | disable|enable <label> [--yes]  # mục khởi động (LaunchAgent, login item)
+python3 maccleaner.py audit [--gatekeeper]                  # phần mềm bám trụ + chữ ký mã (mặc định offline)
+python3 maccleaner.py privacy list | reset <dịch vụ> <bundle id> [--yes]  # dấu vết trình duyệt, quyền TCC
+python3 maccleaner.py maintain list | run <tác vụ> [--yes]  # bảo trì cấp user; tác vụ cần sudo chỉ in lệnh
 
 swift run MacCleaner                             # app desktop: quét lại, chọn, xem trước, dọn ngay trong UI
 swift run MacCleaner --snapshot x.png            # render report mới nhất ra ảnh rồi thoát
@@ -79,13 +93,13 @@ Mặc định có `10-classify` → [scripts/classify.py](scripts/classify.py) i
 
 ## Terminal log
 
-Nút **Log** (⌘L) mở bảng log ở đáy app: lệnh đang chạy, từng bước quét kèm số mục và thời gian, nhịp báo trong các bước dài (duyệt home, tìm backup trên toàn ổ, đo dung lượng), từng mục khi dọn, và lỗi nếu có. Lần mở đầu tiên (chưa có report) app tự quét và tự mở log. Log cũng ghi ra `~/Library/Application Support/MacCleaner/logs/app-<ngày>.log`; nút **Copy** để gửi khi cần báo lỗi.
+Nút **Log** (⌘L) mở bảng log ở đáy app: lệnh đang chạy, từng bước quét kèm số mục và thời gian, nhịp báo trong các bước dài (duyệt home, tìm backup trên toàn ổ, đo dung lượng), từng mục khi dọn, và lỗi nếu có. Lần mở đầu tiên (chưa có report) app tự quét và tự mở log. Log cũng ghi ra `~/Library/Application Support/MacCleaner/logs/app-<ngày>.log`; nút **Copy** để gửi khi cần báo lỗi. Nút **Mở Terminal** bật Terminal.app thật, chạy `tail -F` log hiện tại; Ctrl-C để thôi xem và gõ lệnh `mac-cleaner` ngay trong thư mục dữ liệu.
 
 Chạy app với thư mục dữ liệu khác: `MACCLEANER_DATA=/đường/dẫn open -a ~/Applications/MacCleaner.app` (dùng chung biến với lệnh `mac-cleaner`).
 
 ## Hook xin duyệt (khi dùng qua Claude Code)
 
-Plugin có hook `PreToolUse`: trước khi agent chạy lệnh **xoá thật** — `mac-cleaner clean … --yes`, `mo clean|purge|uninstall|optimize|installer` không kèm `--dry-run`, hay lệnh đụng tới Thùng rác — Claude Code **phải hỏi bạn duyệt**, kể cả ở auto mode. Lệnh xem trước chạy bình thường. Hook không chặn cứng: bạn luôn là người quyết.
+Plugin có hook `PreToolUse`: trước khi agent chạy lệnh **làm thật** — `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`, `maintain run … --yes`, `mo clean|purge|uninstall|optimize|installer` (nếu bạn tự cài Mole) không kèm `--dry-run`, hay lệnh đụng tới Thùng rác — Claude Code **phải hỏi bạn duyệt**, kể cả ở auto mode. Lệnh xem trước chạy bình thường. Hook không chặn cứng: bạn luôn là người quyết.
 
 ## Mức an toàn
 
@@ -118,7 +132,7 @@ Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13
 | caches | `~/Library/{Caches,Logs}`, `~/Library/Containers/*/Data/Library/Caches`, `/Library/{Caches,Logs}`, Xcode DerivedData/DeviceSupport/Archives, `simctl list devices unavailable`, `~/.npm`, `~/.gradle/caches`, `~/.cache/*`… |
 | junk | build artifact khi đi qua `~`, installer trong Downloads/Desktop/Documents, file backup trên toàn volume Data (`find -x`, gom theo thư mục + tên gốc, giữ bản mtime mới nhất), Containers/Preferences không khớp bundle id nào đang cài, Thùng rác |
 
-Bổ sung (tuỳ chọn, tự cài nếu muốn): [Mole](https://github.com/tw93/mole) (`mo clean`) dọn sâu hơn ở cấp app (Application Support caches, Homebrew cleanup…) — skill `mac-cleaner` chỉ cách dùng cả hai. Lưu ý: `mo clean` **xoá hẳn**, còn mac-cleaner luôn chuyển vào Thùng rác.
+Tính năng trong `mclib/features/` đọc thêm: `launchctl`/`sfltool dumpbtm` (khởi động), `codesign -dv`/cờ quarantine (bám trụ), TCC.db của user (quyền), Spotlight `kMDItemLastUsedDate` (app lâu không mở), appcast Sparkle + `brew outdated --cask` + `softwareupdate -l` (cập nhật), `st_blocks`/`SF_DATALESS` (dung lượng, cloud). Đối chiếu với CleanMyMac: `docs/CLEANMYMAC-PARITY.md`.
 
 ## Giới hạn đã biết
 
@@ -131,17 +145,18 @@ Bổ sung (tuỳ chọn, tự cài nếu muốn): [Mole](https://github.com/tw93
 ```
 maccleaner.py                  quét + dọn + xuất report (Python stdlib, có test)
 mclib/safety.py                rào an toàn dùng chung: vùng bảo vệ, chặn cứng SIP/thư mục gốc, app đang chạy, Thùng rác, log dọn
+mclib/featclean.py             nối `clean` với mục của tính năng (--ids, --category <tính năng>[:<kind>])
 mclib/registry.py              nạp tính năng từ mclib/features/ (lệnh con + report["features"]) — cách thêm: mclib/README.md
-mclib/features/                mỗi file một tính năng (status.py: mẫu chỉ đọc)
+mclib/features/                mỗi file một tính năng: status, junk, maintain, space (analyze/large), dupes, cloud, uninstall, updates, startup, persistence (audit), privacy
 Web/board.html                 toàn bộ UI (HTML/CSS/JS thuần, offline) — dùng cho cả app và report tĩnh
 Sources/MacCleaner/main.swift  cửa sổ AppKit + WKWebView, cầu nối JS → maccleaner.py
 scripts/make-app.sh            đóng gói .app Universal (arm64 + x86_64; ARCHS="arm64" để build nhanh)
 install.sh                     cài một lệnh: Command Line Tools, app, lệnh mac-cleaner, plugin Claude Code
-skills/mac-cleaner/           skill duy nhất: kiểm kê + dọn bằng mac-cleaner và Mole (plugin Claude Code, manifest ở .claude-plugin/)
-hooks/                         hook xin duyệt: Claude phải hỏi trước khi dọn thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
+skills/mac-cleaner/           skill duy nhất: kiểm kê + dọn + theo dõi bằng mac-cleaner (plugin Claude Code, manifest ở .claude-plugin/)
+hooks/                         hook xin duyệt: Claude phải hỏi trước mọi lệnh làm thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
 scripts/classify.py            phân loại report / hệ thống file thành NÊN XOÁ · CÂN NHẮC · GIỮ (chạy sau mỗi scan qua hooks/post-scan/)
 hooks/post-scan/               hook chạy ngay sau scan (10-classify)
-tests/                         unit test (test_maccleaner.py, test_classify.py, test_features.py)
+tests/                         unit test (`TMPDIR=/tmp python3 -m unittest discover tests`)
 LICENSE                        MIT
 ```
 

@@ -8,7 +8,7 @@
     {
       "name": "mac-cleaner",
       "source": "./",
-      "description": "Kiểm kê và dọn rác macOS an toàn (skill mac-cleaner: kiểm kê + dọn sâu bằng Mole)."
+      "description": "Kiểm kê và dọn rác macOS an toàn (skill mac-cleaner: kiểm kê, dọn, gỡ app, theo dõi máy — không phụ thuộc công cụ ngoài)."
     }
   ]
 }
