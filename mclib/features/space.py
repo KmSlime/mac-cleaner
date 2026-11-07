@@ -20,7 +20,7 @@ from mclib.features import _fs
 
 NAME = "space"
 TREE_INLINE_MAX = 2000      # nút; lớn hơn → ghi file space-<ts>.json riêng
-COLLECT_TIMEOUT = 120       # giây cho tóm tắt trong `scan`
+COLLECT_TIMEOUT = 15        # giây cho tóm tắt trong `scan` (hết giờ → partial; số đủ: `analyze`)
 
 
 # ---------- cây dung lượng ----------
