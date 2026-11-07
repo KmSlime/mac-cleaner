@@ -1,0 +1,6 @@
+#!/bin/bash
+# Hook sau quét: phân loại report vừa ghi thành NÊN XOÁ / CÂN NHẮC / GIỮ (scripts/classify.py).
+# Đối số: $1 = report JSON. Tắt cả nhóm hook: maccleaner.py scan --no-hooks. Chỉ đọc, không xoá gì.
+here="$(cd "$(dirname "$0")/../.." && pwd)"
+out="$(dirname "$1")"
+exec /usr/bin/env python3 -I "$here/scripts/classify.py" --report "$1" --out "$out" --summary

@@ -24,9 +24,10 @@ Muốn hoàn tác được thì ưu tiên mac-cleaner; `mo clean` chỉ dùng ch
 
 1. `df -h /System/Volumes/Data` — ghi dung lượng trước.
 2. **Xem trước, không bao giờ bỏ bước này:**
-   - `mac-cleaner scan` → đọc report `.md`/`.json` (đường dẫn in ra).
+   - `mac-cleaner scan` → đọc report `.md`/`.json` (đường dẫn in ra) **và** bảng phân loại do hook `post-scan/10-classify` in ngay sau đó (`reports/classify-<ts>.md`).
+   - Người dùng muốn quét cả hệ thống file: `python3 scripts/classify.py --report latest --fs [--root <boundary>…] --out reports` (toàn bộ từ `/` nếu không có `--root`).
    - `mo <lệnh> --dry-run </dev/null 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' | grep -v '^\s*$'` (`</dev/null` để không kẹt menu; nhiều lệnh dry-run chạy song song được).
-3. Báo **bảng**: nhóm · dung lượng · mức (🟢 an toàn / 🟡 cân nhắc / 🔵 bảo vệ) · cách xoá (Thùng rác / xoá hẳn) · ghi chú. Tổng `mo clean` đã gồm simulator — đừng cộng trùng với mac-cleaner.
+3. Báo **bảng** theo 3 nhóm của classify (NÊN XOÁ / CÂN NHẮC kèm "xoá thì sao" / GIỮ): nhóm · dung lượng · mức (🟢 an toàn / 🟡 cân nhắc / 🔵 bảo vệ) · cách xoá (Thùng rác / xoá hẳn) · ghi chú. Tổng `mo clean` đã gồm simulator — đừng cộng trùng với mac-cleaner.
 4. **Chỉ xoá khi người dùng ra lệnh**, rồi:
    - `mac-cleaner clean --ids <id,…> [--include-review] --yes`;
    - mục kiểm kê/bảo vệ (app, repo, plugin, backup mới nhất, dữ liệu trong `Application Support`, LaunchAgent…) chỉ khi người dùng **chỉ đích danh**: thêm `--force`;

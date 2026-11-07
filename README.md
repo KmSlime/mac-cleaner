@@ -26,7 +26,10 @@ Chỉ cần skill trong Claude Code (đã đăng nhập GitHub có quyền đọ
 ## Chạy
 
 ```sh
-python3 maccleaner.py scan                       # quét → reports/report-<ts>.{html,md,json}
+python3 maccleaner.py scan                       # quét → reports/report-<ts>.{html,md,json}, rồi chạy hooks/post-scan/*
+python3 scripts/classify.py --report latest      # phân loại report: NÊN XOÁ / CÂN NHẮC / GIỮ + "xoá thì sao"
+python3 scripts/classify.py --fs                 # quét TOÀN BỘ hệ thống file từ / (gốc → lá, không sudo)
+python3 scripts/classify.py --fs --root ~/Library --root ~/Developer --out reports   # theo boundary, ghi classify-<ts>.{md,json}
 open reports/report-*.html                       # report tĩnh (tick chọn → copy lệnh dọn)
 python3 maccleaner.py clean                      # preview: mọi mục "an toàn" của report mới nhất
 python3 maccleaner.py clean --category caches --yes          # dọn thật một nhóm
@@ -58,6 +61,21 @@ Sidebar là cây mục lục: **Tổng quan** → từng nhóm (Ứng dụng, Pl
 - **Thùng rác:** mục Thùng rác trong Junk có nút **Đổ Thùng rác** riêng (xoá vĩnh viễn, phải tick xác nhận; macOS có thể hỏi quyền cho Mac Cleaner điều khiển Finder). Thùng rác không bao giờ gộp vào xoá hàng loạt.
 
 Mọi thứ khác đều **chuyển vào Thùng rác**, khôi phục được cho tới khi đổ. LaunchAgent được ngừng (`launchctl bootout`) trước khi chuyển plist vào Thùng rác. Mỗi mục được kiểm lại ngay trước khi xoá. Trong report HTML tĩnh, nút xoá copy lệnh `clean --ids …` (thêm `--force` nếu có mục kiểm kê) để dán vào Terminal.
+
+## Phân loại sau quét
+
+`scan` xong tự chạy mọi file thực thi trong `hooks/post-scan/` (theo tên, đối số là report JSON; `--no-hooks` để tắt).
+Mặc định có `10-classify` → [scripts/classify.py](scripts/classify.py) in bảng tổng và 5 mục NÊN XOÁ lớn nhất, ghi đủ ra `reports/classify-<ts>.{md,json}`.
+
+| Nhóm | Nghĩa |
+|---|---|
+| **NÊN XOÁ** | tự tạo lại (cache, log, build, dependency, bản cài đã dùng) — xoá chỉ tốn thời gian dựng lại |
+| **CÂN NHẮC** | xoá được nhưng có hệ quả: mất trạng thái/đăng nhập/index của app, phải tải lại SDK/simulator, dữ liệu app không còn dùng, đổ Thùng rác là vĩnh viễn. Mỗi mục ghi *xoá thì sao* để người dùng tự quyết |
+| **GIỮ** | hệ thống (SIP), dữ liệu người dùng, khoá/bí mật, Homebrew (để `brew` quản), thứ đánh dấu giữ |
+
+- `--fs` đi từ gốc tới lá: thư mục khớp luật cụ thể (`~/Library/Caches`, `*/node_modules`, `*/.build`…) được tính cả cây thành một mục; thư mục chứa (`~`, `~/Library`, `~/Documents`…) và chỗ chưa có luật thì đi tiếp xuống tới `--depth` (mặc định 6). Bỏ qua `/System/Volumes` (Data volume đã thấy qua firmlink), `/Volumes`, `/dev`.
+- Danh sách luôn giữ: `--keep PATH` hoặc file `MACCLEANER_KEEP_FILE`. Lịch sử dọn đọc từ `logs/clean-*.jsonl` (+ `MACCLEANER_EXTRA_LOGS`).
+- Chỉ đọc, không xoá gì. Dọn vẫn qua `clean --ids … --yes`.
 
 ## Terminal log
 
@@ -118,7 +136,9 @@ scripts/make-app.sh            đóng gói .app Universal (arm64 + x86_64; ARCHS
 install.sh                     cài một lệnh: Command Line Tools, Mole, app, lệnh mac-cleaner, plugin Claude Code
 skills/mac-cleaner/           skill duy nhất: kiểm kê + dọn bằng mac-cleaner và Mole (plugin Claude Code, manifest ở .claude-plugin/)
 hooks/                         hook xin duyệt: Claude phải hỏi trước khi dọn thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
-tests/test_maccleaner.py       unit test
+scripts/classify.py            phân loại report / hệ thống file thành NÊN XOÁ · CÂN NHẮC · GIỮ (chạy sau mỗi scan qua hooks/post-scan/)
+hooks/post-scan/               hook chạy ngay sau scan (10-classify)
+tests/                         unit test (test_maccleaner.py, test_classify.py)
 LICENSE                        MIT
 ```
 
