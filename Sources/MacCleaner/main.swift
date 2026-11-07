@@ -118,7 +118,8 @@ func offerInstallCommandLineTools() {
 func latestReport() -> URL? {
     let dir = dataDir.appendingPathComponent("reports")
     let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-    return files.filter { $0.lastPathComponent.hasPrefix("report-") && $0.pathExtension == "json" }
+    // chỉ report của `scan` (report-<yyyyMMdd>-<HHmmss>.json); bỏ report-ciel-*.json của công cụ khác ghi chung thư mục
+    return files.filter { $0.lastPathComponent.range(of: #"^report-\d{8}-\d{6}\.json$"#, options: .regularExpression) != nil }
         .max { ($0.path) < ($1.path) }  // tên có timestamp yyyyMMdd-HHmmss nên sort chuỗi = sort thời gian
 }
 

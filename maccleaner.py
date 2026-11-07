@@ -622,7 +622,7 @@ def main(argv=None):
         return 0
     if a.force and not a.ids:
         ap.error("--force chỉ dùng kèm --ids (chọn đích danh từng mục)")
-    path = a.report or max(glob.glob(os.path.join(DATA, "reports", "report-*.json")), default=None, key=os.path.getmtime)
+    path = a.report or max(glob.glob(os.path.join(DATA, "reports", "report-[0-9]*.json")), default=None, key=os.path.getmtime)
     if not path:
         ap.error("chưa có report, chạy `scan` trước")
     rep = json.load(open(path, encoding="utf-8"))

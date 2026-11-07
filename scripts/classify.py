@@ -277,7 +277,7 @@ def main(argv=None):
         ap.error("cần --report và/hoặc --fs")
     keep, rows, sources, meta = keep_list(a.keep), [], [], {}
     if a.report:
-        path = a.report if a.report != "latest" else max(glob.glob(os.path.join(DATA, "reports", "report-*.json")), key=os.path.getmtime)
+        path = a.report if a.report != "latest" else max(glob.glob(os.path.join(DATA, "reports", "report-[0-9]*.json")), key=os.path.getmtime)
         rr, rep = classify_report(path, keep)
         rows += rr; sources.append(os.path.basename(path))
     if a.fs:

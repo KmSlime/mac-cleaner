@@ -284,3 +284,21 @@ class AIModelCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LatestReportPick(unittest.TestCase):
+    """`clean` không kèm --report: chỉ chọn report của scan, bỏ report-ciel-*.json ghi chung thư mục (dù mới hơn)."""
+    def test_ignores_foreign_reports(self):
+        import subprocess, sys
+        with tempfile.TemporaryDirectory(dir="/tmp") as d:
+            os.makedirs(os.path.join(d, "reports"))
+            scan = os.path.join(d, "reports", "report-20260101-000000.json")
+            other = os.path.join(d, "reports", "report-ciel-junk-20260102-000000.json")
+            for p in (scan, other):
+                with open(p, "w") as f:
+                    f.write('{"items": [], "features": {}}')
+            os.utime(scan, (1, 1))
+            out = subprocess.run([sys.executable, mc.__file__, "clean"], env=dict(os.environ, MACCLEANER_DATA=d),
+                                 capture_output=True, text=True, timeout=60).stdout
+        self.assertIn("report-20260101-000000.json", out)
+        self.assertNotIn("report-ciel-junk", out)
