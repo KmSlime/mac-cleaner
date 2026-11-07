@@ -603,6 +603,9 @@ def main(argv=None):
                    help="cho phép cả mục kiểm kê/bảo vệ chọn đích danh bằng --ids (vẫn chặn SIP và thư mục gốc; Thùng rác = đổ vĩnh viễn)")
     c.add_argument("--permanent", action="store_true",
                    help="cho phép mục tính năng có delete_mode 'permanent' (xoá hẳn, không hoàn tác)")
+    c.add_argument("--mode", choices=safety.MODES, default="trash",
+                   help="trash (mặc định): chuyển vào Thùng rác · permanent: chỉ mục quét gốc trong home, kiểm như trash "
+                        "rồi chuyển vào Thùng rác và xoá hẳn đúng bản đó (không hoàn tác; cần --ids, không kèm --force)")
     c.add_argument("--yes", action="store_true", help="thực thi (không có: chỉ preview)")
     c.add_argument("--json", action="store_true")
     features = registry.discover()
@@ -622,6 +625,8 @@ def main(argv=None):
         return 0
     if a.force and not a.ids:
         ap.error("--force chỉ dùng kèm --ids (chọn đích danh từng mục)")
+    if a.mode == "permanent" and (a.force or not a.ids):
+        ap.error("--mode permanent cần --ids và không dùng chung với --force")
     path = a.report or max(glob.glob(os.path.join(DATA, "reports", "report-[0-9]*.json")), default=None, key=os.path.getmtime)
     if not path:
         ap.error("chưa có report, chạy `scan` trước")
@@ -631,8 +636,12 @@ def main(argv=None):
     before = shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
     err = lambda m: print(m, file=sys.stderr, flush=True)
     (err if a.json else print)(f"{'Dọn' if a.yes else 'Xem trước'} {len(chosen) + len(fchosen)} mục từ {os.path.basename(path)}…")
-    res = clean(rep, chosen, a.yes, log=err if a.json else print, force=a.force)  # --json: log ra stderr (app hiện ở terminal log)
-    if fchosen:  # mục của tính năng (report["features"]): list-only không bao giờ dọn, permanent cần --permanent
+    res = clean(rep, chosen, a.yes, log=err if a.json else print, force=a.force, mode=a.mode)  # --json: log ra stderr (terminal)
+    if fchosen and a.mode == "permanent":  # xoá vĩnh viễn chỉ áp dụng mục quét gốc; mục tính năng có luật riêng (--permanent)
+        res["results"] += [dict(id=e["id"], path=e["path"], size=e.get("size"), status="skip", mode=a.mode,
+                                reason="mục tính năng không xoá vĩnh viễn theo --mode — dùng Thùng rác") for e in fchosen]
+        chosen = chosen + fchosen
+    elif fchosen:  # mục của tính năng (report["features"]): list-only không bao giờ dọn, permanent cần --permanent
         fres = featclean.clean(fchosen, a.yes, log=err if a.json else print, force=a.force, permanent=a.permanent,
                                log_path=res["log"])
         res["results"] += fres["results"]
@@ -642,7 +651,7 @@ def main(argv=None):
     if a.json:
         print(json.dumps(res, ensure_ascii=False))
     else:
-        mode = "Đã dọn" if a.yes else "Preview (thêm --yes để dọn)"
+        mode = ("Đã xoá vĩnh viễn" if a.mode == "permanent" else "Đã dọn") if a.yes else "Preview (thêm --yes để dọn)"
         print(f"{mode}: {sum(r['status'] in ('ok', 'dry-run') for r in res['results'])}/{len(chosen)} mục, ~{fmt(res['freed'])}"
               + (f" · trống {fmt(before)} → {fmt(res['freeAfter'])} · log {res['log']}" if a.yes else ""))
     return 0

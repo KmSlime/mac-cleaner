@@ -1,7 +1,8 @@
 import AppKit
 import WebKit
+import SwiftTerm
 
-// Cửa sổ AppKit + WKWebView. Toàn bộ quét/dọn nằm ở maccleaner.py.
+// Cửa sổ AppKit: WKWebView (board) ở trên, terminal PTY thật (SwiftTerm) ở dưới. Toàn bộ quét/dọn nằm ở maccleaner.py.
 let args = CommandLine.arguments
 #if DEBUG
 // `swift run` (debug): tìm source qua #filePath.
@@ -123,18 +124,145 @@ func latestReport() -> URL? {
         .max { ($0.path) < ($1.path) }  // tên có timestamp yyyyMMdd-HHmmss nên sort chuỗi = sort thời gian
 }
 
+/// Quote đơn cho zsh (an toàn với dấu cách, `'`, `$`).
+func shq(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+
+/// Script của terminal (nhúng và Terminal.app): `tail -F` log của app; Ctrl-C → shell đăng nhập ở thư mục dữ liệu.
+func terminalScript() -> String {
+    """
+    #!/bin/zsh
+    cd \(shq(dataDir.path)) 2>/dev/null || cd ~
+    printf '\\033]0;Mac Cleaner — log\\007'
+    printf '%s\\n' 'Mac Cleaner · log trực tiếp:' \(shq(logFile.path))
+    printf '%s\\n' 'Ctrl-C để thôi xem log và dùng shell ở đây. Lệnh:' \(shq("  python3 " + shq(script.path) + " scan | clean | status …")) ''
+    touch \(shq(logFile.path))
+    trap ':' INT
+    tail -n 200 -F \(shq(logFile.path))
+    trap - INT
+    echo
+    exec "${SHELL:-/bin/zsh}" -l
+
+    """
+}
+
+/// Ghi script terminal vào logs/ (quyền 700). Trả đường dẫn hoặc nil.
+func writeTerminalScript(_ name: String) -> URL? {
+    let dir = dataDir.appendingPathComponent("logs"), file = dir.appendingPathComponent(name)
+    do {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try terminalScript().write(to: file, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+        return file
+    } catch { return nil }
+}
+
+/// Payload `clean:{"ids":[…], "mode":"trash"|"permanent", "yes":bool, "force":bool}` của board → tham số maccleaner.py.
+/// Id chỉ 10 ký tự hex; "permanent" không đi kèm --force (maccleaner.py cũng từ chối). Sai định dạng → nil.
+func cleanArguments(report: String, payload: String) -> [String]? {
+    guard let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+          let ids = obj["ids"] as? [String], !ids.isEmpty,
+          ids.allSatisfy({ $0.range(of: "^[0-9a-f]{10}$", options: .regularExpression) != nil }) else { return nil }
+    let mode = obj["mode"] as? String ?? "trash", force = obj["force"] as? Bool == true
+    guard mode == "trash" || mode == "permanent", !(mode == "permanent" && force) else { return nil }
+    var a = ["clean", "--report", report, "--ids", ids.joined(separator: ","), "--json"]
+    if mode == "permanent" { a += ["--mode", "permanent"] }
+    if force { a.append("--force") }  // xoá đích danh mục kiểm kê/bảo vệ (người dùng đã xác nhận trên board)
+    if obj["yes"] as? Bool == true { a.append("--yes") }
+    return a
+}
+
 /// Chuỗi JSON → literal JS an toàn để nhúng vào evaluateJavaScript.
 func jsLiteral(_ s: String) -> String {
     let data = try! JSONSerialization.data(withJSONObject: [s], options: [])
     return String(String(data: data, encoding: .utf8)!.dropFirst().dropLast())
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+/// Panel terminal dưới board: thanh tiêu đề (thu gọn, mở lại phiên, Terminal.app) + PTY thật chạy `terminalScript()`.
+final class TerminalPanel: NSView, LocalProcessTerminalViewDelegate {
+    let term = LocalProcessTerminalView(frame: .zero)
+    private let status = NSTextField(labelWithString: "")
+    private let restart = NSButton(title: "Mở lại", target: nil, action: nil)
+    private let toggle = NSButton(title: "", target: nil, action: nil)
+    var onToggle: () -> Void = {}
+    var onOpenExternal: () -> Void = {}
+    static let barHeight: CGFloat = 28
+    private var appearanceObs: NSKeyValueObservation?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        let title = NSTextField(labelWithString: "Terminal")
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
+        restart.bezelStyle = .inline; restart.target = self; restart.action = #selector(start); restart.isHidden = true
+        let ext = NSButton(title: "Terminal.app", target: self, action: #selector(external))
+        ext.bezelStyle = .inline; ext.toolTip = "Mở Terminal.app thật: cùng log trực tiếp, Ctrl-C để gõ lệnh"
+        toggle.bezelStyle = .inline; toggle.target = self; toggle.action = #selector(toggled)
+        let bar = NSStackView(views: [title, status, restart, NSView(), ext, toggle])
+        bar.orientation = .horizontal; bar.spacing = 8; bar.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 8)
+        bar.setHuggingPriority(.defaultLow, for: .horizontal)
+        for v in [bar, term] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: topAnchor), bar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: trailingAnchor), bar.heightAnchor.constraint(equalToConstant: Self.barHeight),
+            term.topAnchor.constraint(equalTo: bar.bottomAnchor), term.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            term.trailingAnchor.constraint(equalTo: trailingAnchor), term.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        term.processDelegate = self
+        term.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        applyColors()
+        appearanceObs = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in DispatchQueue.main.async { self?.applyColors() } }
+        setCollapsed(false)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Màu theo theme mặc định của board (mac-cleaner): tối #0d0d0f/#f4f4f5, sáng #ffffff/#111114.
+    func applyColors() {
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let bg = dark ? NSColor(red: 0.051, green: 0.051, blue: 0.059, alpha: 1) : .white
+        term.nativeBackgroundColor = bg
+        term.nativeForegroundColor = dark ? NSColor(red: 0.957, green: 0.957, blue: 0.961, alpha: 1) : NSColor(red: 0.067, green: 0.067, blue: 0.078, alpha: 1)
+        wantsLayer = true; layer?.backgroundColor = bg.cgColor
+    }
+
+    func setCollapsed(_ c: Bool) {
+        toggle.title = c ? "Hiện ▴" : "Thu gọn ▾"
+        term.isHidden = c
+    }
+
+    /// Chạy (lại) phiên: zsh chạy script tail -F log → Ctrl-C → shell đăng nhập ở thư mục dữ liệu.
+    @objc func start() {
+        guard let file = writeTerminalScript("terminal.zsh") else { status.stringValue = "không ghi được script terminal"; return }
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (env["PATH"] ?? "")
+        env["MACCLEANER_DATA"] = dataDir.path
+        env["TERM"] = "xterm-256color"; env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
+        restart.isHidden = true; status.stringValue = ""
+        term.startProcess(executable: "/bin/zsh", args: [file.path], environment: env.map { "\($0.key)=\($0.value)" },
+                          currentDirectory: dataDir.path)
+    }
+    @objc private func toggled() { onToggle() }
+    @objc private func external() { onOpenExternal() }
+    func focus() { window?.makeFirstResponder(term) }
+
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+    func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+    func processTerminated(source: TerminalView, exitCode: Int32?) {
+        DispatchQueue.main.async { self.status.stringValue = "phiên đã kết thúc"; self.restart.isHidden = false }
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSSplitViewDelegate {
     var window: NSWindow!
     var web: WKWebView!
+    var split: NSSplitView?
+    var panel: TerminalPanel?
+    var termCollapsed = UserDefaults.standard.bool(forKey: "termCollapsed") {
+        didSet { UserDefaults.standard.set(termCollapsed, forKey: "termCollapsed") }
+    }
     var reportPath: String?
     let snapshotPath = args.firstIndex(of: "--snapshot").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
-    /// `--view <tính năng>` (kèm --snapshot): chụp khu Tính năng đó thay vì Tổng quan.
+    /// `--view <tính năng|proposal>` (kèm --snapshot): chụp khu Tính năng đó / popup Đề xuất xoá thay vì Tổng quan.
     let snapshotView = args.firstIndex(of: "--view").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -152,7 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.titlebarAppearsTransparent = true
         window.backgroundColor = .black
         window.minSize = NSSize(width: 900, height: 600)
-        window.contentView = web
+        if snapshotPath == nil { buildSplit() } else { window.contentView = web }
         if snapshotPath == nil {
             window.setFrameAutosaveName("MacCleanerWindow")
             window.center()
@@ -167,6 +295,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
+
+    // MARK: Terminal nhúng
+
+    /// Board ở trên, terminal ở dưới; kéo thanh chia để đổi cỡ (vị trí lưu lại), thu gọn còn thanh tiêu đề.
+    func buildSplit() {
+        let sv = NSSplitView()
+        sv.isVertical = false; sv.dividerStyle = .thin; sv.delegate = self
+        let p = TerminalPanel(frame: NSRect(x: 0, y: 0, width: 1440, height: 280))
+        p.onToggle = { [weak self] in self?.setTerminal(collapsed: !(self?.termCollapsed ?? false)) }
+        p.onOpenExternal = { [weak self] in self?.openRealTerminal() }
+        sv.addArrangedSubview(web); sv.addArrangedSubview(p)
+        sv.setHoldingPriority(.defaultLow, forSubviewAt: 0); sv.setHoldingPriority(.defaultHigh, forSubviewAt: 1)
+        window.contentView = sv
+        split = sv; panel = p
+        sv.layoutSubtreeIfNeeded()
+        let h = UserDefaults.standard.double(forKey: "termHeight")
+        sv.setPosition(sv.bounds.height - (termCollapsed ? TerminalPanel.barHeight : (h > 80 ? h : 280)), ofDividerAt: 0)
+        p.setCollapsed(termCollapsed)
+        p.start()
+    }
+
+    func setTerminal(collapsed: Bool) {
+        guard let sv = split, let p = panel else { return }
+        if p.frame.height > TerminalPanel.barHeight + 20 { UserDefaults.standard.set(Double(p.frame.height), forKey: "termHeight") }  // nhớ cỡ đang mở
+        termCollapsed = collapsed
+        p.setCollapsed(collapsed)
+        let h = UserDefaults.standard.double(forKey: "termHeight")
+        sv.setPosition(sv.bounds.height - (collapsed ? TerminalPanel.barHeight : (h > 80 ? h : 280)), ofDividerAt: 0)
+    }
+
+    /// Message `terminal` của board / ⌘L: mở panel (nếu đang thu gọn) và focus terminal.
+    @objc func showTerminal() {
+        if termCollapsed { setTerminal(collapsed: false) }
+        panel?.focus()
+    }
+    @objc func toggleTerminal() {
+        if termCollapsed { showTerminal() } else { setTerminal(collapsed: true) }
+    }
+
+    func splitView(_ sv: NSSplitView, constrainMinCoordinate p: CGFloat, ofSubviewAt i: Int) -> CGFloat { 200 }
+    func splitView(_ sv: NSSplitView, constrainMaxCoordinate p: CGFloat, ofSubviewAt i: Int) -> CGFloat { sv.bounds.height - TerminalPanel.barHeight }
+    func splitViewDidResizeSubviews(_ n: Notification) {
+        guard let p = panel else { return }
+        let collapsed = p.frame.height <= TerminalPanel.barHeight + 4
+        if collapsed != termCollapsed { termCollapsed = collapsed; p.setCollapsed(collapsed) }
+    }
 
     /// Một dòng log: lên terminal trong app + ghi file. Gọi từ thread nào cũng được.
     func log(_ line: String) {
@@ -190,7 +364,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func render(_ json: String) {
         // MC_SCRIPT: đường dẫn maccleaner.py thật, để board in đúng lệnh cho người dùng copy vào Terminal.
-        let view = snapshotPath == nil ? "" : snapshotView.map { "; window.showFeature && window.showFeature(\(jsLiteral($0)))" } ?? ""
+        // `--view proposal`: chụp popup Đề xuất xoá; tên khác: khu Tính năng đó.
+        let view = snapshotPath == nil ? "" : snapshotView.map {
+            $0 == "proposal" ? "; window.openProposal()" : "; window.showFeature && window.showFeature(\(jsLiteral($0)))"
+        } ?? ""
         web.evaluateJavaScript("window.MC_SCRIPT = \(jsLiteral(script.path)); window.render(JSON.parse(\(jsLiteral(json))))" + view) { _, error in
             if let error { NSLog("render failed: \(error)") }
             if let path = self.snapshotPath { self.snapshot(to: path) }
@@ -206,6 +383,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func scan(first: Bool) {
         web.evaluateJavaScript("window.scanStarted && window.scanStarted(\(first))")
+        if first { DispatchQueue.main.async { if self.termCollapsed { self.setTerminal(collapsed: false) } } }  // lần đầu: hiện tiến độ
         log("$ python3 maccleaner.py scan --json")
         let t0 = Date()
         DispatchQueue.global(qos: .userInitiated).async {
@@ -223,13 +401,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func clean(_ payload: String) {
-        guard let report = reportPath,
-              let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
-              let ids = obj["ids"] as? [String], !ids.isEmpty,
-              ids.allSatisfy({ $0.range(of: "^[0-9a-f]{10}$", options: .regularExpression) != nil }) else { return }
-        var a = ["clean", "--report", report, "--ids", ids.joined(separator: ","), "--json"]
-        if obj["force"] as? Bool == true { a.append("--force") }  // xoá đích danh mục kiểm kê/bảo vệ (người dùng đã xác nhận)
-        if obj["yes"] as? Bool == true { a.append("--yes") }
+        guard let report = reportPath, let a = cleanArguments(report: report, payload: payload) else {
+            log("✗ Yêu cầu dọn không hợp lệ (report/id/mode)")
+            web.evaluateJavaScript("window.scanFailed && window.scanFailed('yêu cầu dọn không hợp lệ')")
+            return
+        }
         log("$ python3 maccleaner.py " + a.joined(separator: " "))
         DispatchQueue.global(qos: .userInitiated).async {
             let r = python(a, onLine: { self.log($0) })
@@ -263,7 +439,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(String(body.dropFirst(5)), forType: .string)
         } else if body == "terminal" {
-            openRealTerminal()
+            showTerminal()
         } else if body.hasPrefix("reveal:") {
             let url = URL(fileURLWithPath: String(body.dropFirst(7)))
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -273,27 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// Bật Terminal.app thật: script `.command` trong logs/ hiện log trực tiếp (`tail -F`), Ctrl-C → shell tương tác
     /// ở thư mục dữ liệu để gõ lệnh mac-cleaner. Mở `.command` bằng Terminal nên không cần quyền Automation.
     func openRealTerminal() {
-        let q = { (s: String) in "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-        let dir = dataDir.appendingPathComponent("logs")
-        let cmd = dir.appendingPathComponent("open-terminal.command")
-        let sh = """
-        #!/bin/zsh
-        cd \(q(dataDir.path)) 2>/dev/null || cd ~
-        printf '\\033]0;Mac Cleaner — log\\007'
-        printf '%s\\n' 'Mac Cleaner · log trực tiếp:' \(q(logFile.path))
-        printf '%s\\n' 'Ctrl-C để thôi xem log và dùng shell ở đây. Lệnh:' \(q("  python3 " + q(script.path) + " scan | clean | status …")) ''
-        trap ':' INT
-        tail -n 200 -F \(q(logFile.path))
-        trap - INT
-        echo
-        exec "${SHELL:-/bin/zsh}" -l
-
-        """
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try sh.write(to: cmd, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cmd.path)
-        } catch { log("✗ Không tạo được script mở Terminal: \(error.localizedDescription)"); return }
+        guard let cmd = writeTerminalScript("open-terminal.command") else { log("✗ Không tạo được script mở Terminal"); return }
         log("$ open -a Terminal \(cmd.path)")
         let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
         NSWorkspace.shared.open([cmd], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration()) { _, error in
@@ -306,6 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "Quét lại", action: #selector(rescan), keyEquivalent: "r").target = self
+        appMenu.addItem(withTitle: "Hiện/ẩn Terminal", action: #selector(toggleTerminal), keyEquivalent: "l").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Mac Cleaner", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
