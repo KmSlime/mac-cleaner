@@ -833,12 +833,30 @@ def clean(rep, chosen, yes=False, log=print, force=False):
     return dict(results=results, freed=freed, log=log_path if yes else None)
 
 
+def run_post_scan_hooks(report_json, out=sys.stdout, hook_dir=None):
+    """Chạy mọi file thực thi trong hooks/post-scan/ (theo tên) với đối số là report JSON vừa ghi.
+    Hook lỗi chỉ in cảnh báo, không làm scan thất bại."""
+    d = hook_dir or os.path.join(ROOT, "hooks", "post-scan")
+    for name in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        f = os.path.join(d, name)
+        if not (os.path.isfile(f) and os.access(f, os.X_OK)):
+            continue
+        try:
+            r = subprocess.run([f, report_json], capture_output=True, text=True, timeout=600)
+            print((r.stdout or "").rstrip() or f"[hook {name}] không in gì", file=out, flush=True)
+            if r.returncode:
+                print(f"[hook {name}] thoát mã {r.returncode}: {(r.stderr or '').strip()[:300]}", file=out, flush=True)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            print(f"[hook {name}] lỗi: {e}", file=out, flush=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan", help="quét và ghi report")
     s.add_argument("--out", default=os.path.join(DATA, "reports"))
     s.add_argument("--json", action="store_true", help="in JSON report ra stdout (dùng cho app)")
+    s.add_argument("--no-hooks", action="store_true", help="không chạy hooks/post-scan/* (phân loại sau quét)")
     c = sub.add_parser("clean", help="dọn item trong report")
     c.add_argument("--report", help="report JSON (mặc định: mới nhất trong reports/)")
     c.add_argument("--ids", help="danh sách id, cách nhau dấu phẩy")
@@ -856,6 +874,8 @@ def main(argv=None):
             print(json.dumps(rep, ensure_ascii=False))
         else:
             print(f"Xong: {len(rep['items'])} mục trong {rep['seconds']}s\n  {stem}.html\n  {stem}.md\n  {stem}.json")
+        if not a.no_hooks:
+            run_post_scan_hooks(stem + ".json", out=sys.stderr if a.json else sys.stdout)  # --json: stdout giữ nguyên JSON
         return 0
     if a.force and not a.ids:
         ap.error("--force chỉ dùng kèm --ids (chọn đích danh từng mục)")
