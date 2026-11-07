@@ -1,8 +1,16 @@
 # Mac Cleaner
 
-Kiểm kê toàn bộ máy macOS và dọn dẹp an toàn: **ứng dụng, plugin (thuộc app nào), extension (editor + trình duyệt),
-git (binary + mọi repo), cache, log, junk** (build artifact, installer, backup cũ, leftover của app đã gỡ, simulator hỏng).
-Mỗi mục có đường dẫn, app sở hữu, phiên bản, dung lượng và mức an toàn. Dashboard có sidebar, KPI, biểu đồ, drawer.
+Kiểm kê toàn bộ máy macOS và dọn dẹp an toàn — lõi Python thư viện chuẩn, không `sudo`:
+
+- **Kiểm kê + dọn:** ứng dụng, plugin (thuộc app nào), extension (editor + trình duyệt), git (binary + mọi repo), cache, log,
+  junk (build artifact, installer, backup cũ, leftover của app đã gỡ, simulator hỏng), rác hệ thống/trình duyệt mở rộng.
+- **Ứng dụng:** gỡ app kèm file liên quan, app lâu không mở, bản cập nhật (Sparkle, Homebrew cask, macOS — chỉ liệt kê).
+- **Dung lượng:** bản đồ thư mục, file lớn lâu không dùng, file trùng, thư mục cloud (bản local vs chỉ còn trên cloud).
+- **Hệ thống:** sức khoẻ máy (ổ, RAM, CPU, pin, mạng), mục khởi động, phần mềm bám trụ + chữ ký mã, quyền riêng tư (TCC), bảo trì cấp user.
+- **Phân loại sau quét:** NÊN XOÁ / CÂN NHẮC / GIỮ kèm "xoá thì sao".
+
+Mỗi mục có đường dẫn, app sở hữu, phiên bản, dung lượng và mức an toàn. Mặc định chỉ xem trước; xoá = chuyển vào Thùng rác, có log.
+Dùng qua dòng lệnh, app desktop (dashboard có sidebar, KPI, biểu đồ, drawer) hoặc plugin Claude Code.
 
 ## Cài (máy Mac bất kỳ, macOS 13+, Apple Silicon hoặc Intel)
 
@@ -19,8 +27,8 @@ git clone https://github.com/KmSlime/mac-cleaner.git && cd mac-cleaner && ./inst
 | Lệnh `mac-cleaner` | `~/.local/bin/mac-cleaner` — dùng chung report với app (`~/Library/Application Support/MacCleaner`) |
 | Plugin Claude Code | Có `claude` thì cài plugin `mac-cleaner` (skill `mac-cleaner`, hook xin duyệt) từ chính repo; không có thì bỏ qua |
 
-Tuỳ chọn: `--no-app`, `--no-plugin` (`--no-mole` cũ vẫn nhận nhưng không còn tác dụng). Chỉ cần app: tải `.zip` ở trang Releases.
-Chỉ cần skill trong Claude Code (đã đăng nhập GitHub có quyền đọc repo): `/plugin install mac-cleaner --marketplace KmSlime/mac-cleaner`.
+Tuỳ chọn: `--no-app`, `--no-plugin`. Chỉ cần app: tải `.zip` ở trang Releases.
+Chỉ cần skill trong Claude Code: `/plugin marketplace add KmSlime/mac-cleaner` rồi `/plugin install mac-cleaner@mac-cleaner`.
 
 ## Chạy
 
@@ -54,15 +62,29 @@ python3 maccleaner.py maintain list | run <tác vụ> [--yes]  # bảo trì cấ
 swift run MacCleaner                             # app desktop: quét lại, chọn, xem trước, dọn ngay trong UI
 swift run MacCleaner --snapshot x.png            # render report mới nhất ra ảnh rồi thoát
 ./scripts/make-app.sh && open build/MacCleaner.app
-python3 -m unittest discover tests               # unit test
+TMPDIR=/tmp python3 -m unittest discover tests   # unit test
 ```
 
-Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 5.9+ cho app. Không có dependency ngoài — **không còn phụ thuộc Mole** (`install.sh` không cài `mo` nữa).
+Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 5.9+ cho app. Không có dependency ngoài.
 App `.app` ghi report/log vào `~/Library/Application Support/MacCleaner`; `swift run`/CLI ghi cạnh source (`reports/`, `logs/`, đã gitignore).
+
+## Kiến trúc
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/architecture-dark.png">
+  <img alt="Sơ đồ kiến trúc Mac Cleaner: người dùng và Claude Code đi qua app, CLI hoặc plugin vào maccleaner.py; registry nạp các tính năng; safety.py kiểm lại rồi chuyển vào Thùng rác và ghi log" src="docs/architecture/architecture-light.png">
+</picture>
+
+Bản tương tác (có liên kết tới từng dòng mã nguồn): [docs/architecture/architecture.html](docs/architecture/architecture.html) — tải về rồi mở bằng trình duyệt.
+
+- Ba lối vào cùng một lõi `maccleaner.py`: lệnh `mac-cleaner` trong Terminal, app Swift (WKWebView hiện `board.html`, cầu JS `post()` chạy `python3 maccleaner.py … --json`), và plugin Claude Code (hook `PreToolUse` bắt hỏi duyệt mọi lệnh `--yes`).
+- `scan` quét các nhóm gốc, rồi `registry.py` nạp từng file `mclib/features/*.py` (lệnh con + `report["features"]`); tính năng đọc trạng thái máy qua công cụ macOS (`launchctl`, `sfltool`, `tccutil`, Spotlight, `brew`, `softwareupdate`…).
+- Report ghi ra `reports/report-<ts>.{json,md,html}` (HTML nhúng `board.html`), sau đó hook `post-scan` chạy `classify.py`.
+- `clean` và `uninstall --yes` đi qua `safety.py`: kiểm lại từng mục lúc chạy, chặn cứng SIP/thư mục gốc/phần mềm bảo mật, chuyển vào Thùng rác và ghi `logs/clean-<ts>.jsonl`. Các lệnh đổi trạng thái khác (`startup`, `privacy reset`, `maintain run`) chỉ chạy khi có `--yes`.
 
 ## Mục lục
 
-Sidebar là cây mục lục: **Tổng quan** → từng nhóm (Ứng dụng, Plugin, Extension, Git, Cache & log, Junk) → từng loại bên trong (vd Cache & log › Log, Cache người dùng, Xcode DerivedData…), mỗi nút có số mục và dung lượng. Bấm mũi tên để mở/thu gọn, bấm tên để xem. Bấm bất kỳ chỗ nào trên trang dẫn tới danh sách (một loại trong cây, một thanh biểu đồ, thẻ KPI, một app trong "App chiếm cache", một app trong "Plugin theo app", tiêu đề các thẻ) thì bảng được lọc và **trang cuộn tới bảng**. Bộ lọc đang bật hiện thành chip phía trên bảng, bấm ✕ để bỏ.
+Sidebar là cây mục lục: **Tổng quan** → từng nhóm (Ứng dụng, Plugin, Extension, Git, Cache & log, Junk) → từng loại bên trong (vd Cache & log › Log, Cache người dùng, Xcode DerivedData…), mỗi nút có số mục và dung lượng. Khu **Tính năng** liệt kê kết quả của `mclib/features/` trong report (sức khoẻ máy, rác hệ thống, dung lượng, file trùng, cloud, gỡ app, cập nhật, khởi động, bám trụ, riêng tư, bảo trì); lệnh đổi trạng thái máy chỉ hiện để copy chạy trong Terminal. Bấm mũi tên để mở/thu gọn, bấm tên để xem. Bấm bất kỳ chỗ nào trên trang dẫn tới danh sách (một loại trong cây, một thanh biểu đồ, thẻ KPI, một app trong "App chiếm cache", một app trong "Plugin theo app", tiêu đề các thẻ) thì bảng được lọc và **trang cuộn tới bảng**. Bộ lọc đang bật hiện thành chip phía trên bảng, bấm ✕ để bỏ.
 
 ## Xoá
 
@@ -157,6 +179,7 @@ hooks/                         hook xin duyệt: Claude phải hỏi trước m�
 scripts/classify.py            phân loại report / hệ thống file thành NÊN XOÁ · CÂN NHẮC · GIỮ (chạy sau mỗi scan qua hooks/post-scan/)
 hooks/post-scan/               hook chạy ngay sau scan (10-classify)
 tests/                         unit test (`TMPDIR=/tmp python3 -m unittest discover tests`)
+docs/architecture/             sơ đồ kiến trúc (HTML tương tác + ảnh sáng/tối), đối chiếu CleanMyMac ở docs/CLEANMYMAC-PARITY.md
 LICENSE                        MIT
 ```
 
