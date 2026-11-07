@@ -123,6 +123,8 @@ def du(path):
     stack = [path]
     while stack:
         d = stack.pop()
+        if any(under(d, s) for s in SKIP_FS):  # /System chứa firmlink tới Data volume → không đếm lại
+            continue
         try:
             it = os.scandir(d)
         except OSError:
@@ -152,7 +154,8 @@ def scan_fs(roots, keep, min_mb, depth):
         if any(under(d, s) for s in SKIP_FS):
             return
         r = match_rule(d, keep)
-        if (r and not r[3]) or level >= depth:
+        holds_keep = any(under(k, d) and k != d for k in keep)  # trong có thứ phải giữ → đi tiếp, đừng gộp cả cây
+        if (r and not r[3] and not holds_keep) or level >= depth:
             b, n, den = du(d)
             stats["files"] += n; stats["denied"] += den; stats["bytes"] += b
             if b >= min_mb * 2 ** 20:
@@ -232,10 +235,15 @@ def human(n):
 def render(rows, meta, top):
     out = [f"# Phân loại dọn dẹp — {meta['generated']}", "",
            f"Nguồn: {', '.join(meta['sources'])}. Ổ: trống {human(meta['disk']['free'])} / {human(meta['disk']['total'])}.", ""]
-    out.append("| Nhóm | Số mục | Dung lượng |\n|---|---|---|")
+    fs = [r for r in rows if r["source"] == "fs"]
+    rp = [r for r in rows if r["source"] == "report"]
+    out.append("| Nhóm | " + " | ".join(h for h, rs in (("Hệ thống file (không trùng)", fs), ("Report mac-cleaner (có id để dọn)", rp)) if rs) + " |")
+    out.append("|---|" + "---|" * sum(1 for x in (fs, rp) if x))
     for c in (XOA, CAN, GIU):
-        rs = [r for r in rows if r["cls"] == c]
-        out.append(f"| {LABEL[c]} | {len(rs)} | {human(sum(r['size'] for r in rs))} |")
+        cells = [f"{sum(r['cls'] == c for r in rs)} mục · {human(sum(r['size'] for r in rs if r['cls'] == c))}" for rs in (fs, rp) if rs]
+        out.append(f"| {LABEL[c]} | " + " | ".join(cells) + " |")
+    if fs and rp:
+        out.append("\nHai cột chồng nhau (mục của report nằm trong các thư mục của hệ thống file) — đừng cộng hai cột.")
     out.append("\nNÊN XOÁ: tự tạo lại, xoá chỉ tốn thời gian dựng lại. CÂN NHẮC: xoá được nhưng có hệ quả (cột *xoá thì sao*) — người dùng quyết. GIỮ: hệ thống, dữ liệu, bí mật, thứ đang dùng.")
     for c in (XOA, CAN, GIU):
         rs = sorted((r for r in rows if r["cls"] == c), key=lambda r: -r["size"])[:top]

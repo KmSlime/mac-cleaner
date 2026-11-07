@@ -51,6 +51,27 @@ class Scan(unittest.TestCase):
         self.assertNotIn("app/node_modules/a.js", by)
         self.assertGreaterEqual(st["bytes"], 5 * 2 ** 20)
 
+    def test_keep_inside_deletable_dir_is_split_out(self):
+        root = tempfile.mkdtemp()
+        cache = os.path.join(root, "node_modules")
+        mk(os.path.join(cache, "keepme", "m.bin"), 3 * 2 ** 20)
+        mk(os.path.join(cache, "junk", "j.bin"), 2 * 2 ** 20)
+        rows, _ = cl.scan_fs([root], [os.path.join(cache, "keepme")], min_mb=1, depth=6)
+        by = {os.path.relpath(r["path"], root): r["cls"] for r in rows}
+        self.assertEqual(by.get("node_modules/keepme"), cl.GIU)
+        self.assertNotIn("node_modules", by)
+
+    def test_du_skips_firmlinked_volumes(self):
+        root = tempfile.mkdtemp()
+        mk(os.path.join(root, "a", "f"), 2 ** 20)
+        mk(os.path.join(root, "vol", "big"), 8 * 2 ** 20)
+        old = cl.SKIP_FS
+        cl.SKIP_FS = (os.path.join(root, "vol"),)
+        try:
+            self.assertLess(cl.du(root)[0], 4 * 2 ** 20)
+        finally:
+            cl.SKIP_FS = old
+
     def test_report_mapping(self):
         rep = {"items": [dict(id="1", path="/a", size=1, safety="safe", kind="user-cache", note=""),
                          dict(id="2", path="/b", size=1, safety="review", kind="build-artifact", note=""),
