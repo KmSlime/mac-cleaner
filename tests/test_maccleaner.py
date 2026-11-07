@@ -266,5 +266,21 @@ class HomeWalk(unittest.TestCase):
             self.assertEqual(rel(inst), ["Downloads/App.dmg"])
 
 
+class AIModelCache(unittest.TestCase):
+    def test_model_dirs_in_dot_cache_are_list_only(self):
+        old = mc.HOME
+        with tempfile.TemporaryDirectory(dir="/tmp") as h:
+            try:
+                mc.HOME = h
+                for n in ("huggingface", "uv"):
+                    os.makedirs(os.path.join(h, ".cache", n, "x"))
+                got = {i["name"]: i for i in mc.scan_caches() if i["path"].startswith(os.path.join(h, ".cache") + "/")}
+            finally:
+                mc.HOME = old
+        self.assertEqual((got["huggingface"]["kind"], got["huggingface"]["safety"], got["huggingface"]["action"]),
+                         ("ai-model", "info", None))
+        self.assertEqual((got["uv"]["safety"], got["uv"]["action"]), ("review", "trash"))
+
+
 if __name__ == "__main__":
     unittest.main()

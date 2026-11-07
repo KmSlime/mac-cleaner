@@ -334,10 +334,17 @@ def scan_caches():
         if os.path.exists(p):
             items.append(item("caches", "dev-cache", Path(p).name, p, owner=owner, safety=safety, action="trash"))
     for p in children(os.path.join(HOME, ".cache")):
+        if Path(p).name.lower() in AI_MODEL_CACHES:  # model AI tải về: tải lại rất lâu → chỉ liệt kê (PARITY §4)
+            items.append(item("caches", "ai-model", Path(p).name, p, owner=Path(p).name, safety="info",
+                              note="model AI đã tải — chỉ liệt kê, xoá tay nếu chắc chắn"))
+            continue
         items.append(item("caches", "dev-cache", Path(p).name, p, owner=Path(p).name, safety="review", action="trash",
                           note="cache của công cụ CLI"))
     return items
 
+
+# Thư mục con của ~/.cache chứa model AI (huggingface hub, LM Studio, torch hub, whisper…)
+AI_MODEL_CACHES = {"huggingface", "lm-studio", "lmstudio", "torch", "whisper", "ollama"}
 
 # ---------- junk ----------
 def group_backups(paths):
