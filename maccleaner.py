@@ -27,7 +27,7 @@ if ROOT not in sys.path:  # `python3 -I` bỏ thư mục script khỏi sys.path;
     sys.path.append(ROOT)
 sys.dont_write_bytecode = True  # không ghi __pycache__ của mclib vào bundle .app đã ký (hay vào repo)
 
-from mclib import registry, safety  # noqa: E402
+from mclib import featclean, registry, safety  # noqa: E402
 # Rào an toàn + dọn nằm ở mclib/safety.py; giữ tên cũ ở đây cho test/caller.
 from mclib.safety import (  # noqa: E402,F401
     ALLOWED_ROOTS, CLEANABLE, DATA, DATA_VOL, DENY_EXACT, DENY_TREE_OK, DENY_TREES, DOT_CLEANABLE, HOME,
@@ -594,6 +594,8 @@ def main(argv=None):
     c.add_argument("--include-review", action="store_true", help="gồm cả mục 'review' (cân nhắc)")
     c.add_argument("--force", action="store_true",
                    help="cho phép cả mục kiểm kê/bảo vệ chọn đích danh bằng --ids (vẫn chặn SIP và thư mục gốc; Thùng rác = đổ vĩnh viễn)")
+    c.add_argument("--permanent", action="store_true",
+                   help="cho phép mục tính năng có delete_mode 'permanent' (xoá hẳn, không hoàn tác)")
     c.add_argument("--yes", action="store_true", help="thực thi (không có: chỉ preview)")
     c.add_argument("--json", action="store_true")
     features = registry.discover()
@@ -618,10 +620,17 @@ def main(argv=None):
         ap.error("chưa có report, chạy `scan` trước")
     rep = json.load(open(path, encoding="utf-8"))
     chosen = select(rep["items"], a.ids.split(",") if a.ids else None, a.category, a.include_review)
+    fchosen = featclean.select(rep.get("features"), a.ids.split(",") if a.ids else None, a.category, a.include_review)
     before = shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
     err = lambda m: print(m, file=sys.stderr, flush=True)
-    (err if a.json else print)(f"{'Dọn' if a.yes else 'Xem trước'} {len(chosen)} mục từ {os.path.basename(path)}…")
+    (err if a.json else print)(f"{'Dọn' if a.yes else 'Xem trước'} {len(chosen) + len(fchosen)} mục từ {os.path.basename(path)}…")
     res = clean(rep, chosen, a.yes, log=err if a.json else print, force=a.force)  # --json: log ra stderr (app hiện ở terminal log)
+    if fchosen:  # mục của tính năng (report["features"]): list-only không bao giờ dọn, permanent cần --permanent
+        fres = featclean.clean(fchosen, a.yes, log=err if a.json else print, force=a.force, permanent=a.permanent,
+                               log_path=res["log"])
+        res["results"] += fres["results"]
+        res["freed"] += fres["freed"]
+        chosen = chosen + fchosen
     res["freeBefore"], res["freeAfter"] = before, shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
     if a.json:
         print(json.dumps(res, ensure_ascii=False))

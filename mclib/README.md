@@ -6,6 +6,7 @@
 ```
 mclib/safety.py      rào an toàn + dọn (vùng bảo vệ, chặn cứng, app đang chạy, Thùng rác, log, du, preview/--yes/--force)
 mclib/registry.py    nạp mclib/features/*, hợp đồng report["features"], entry()/check_entry()
+mclib/featclean.py   `clean` cho mục của tính năng (list-only không dọn, permanent cần --permanent)
 mclib/features/      mỗi file một tính năng; status.py là mẫu chỉ đọc
 ```
 
@@ -58,8 +59,11 @@ phần mềm bảo mật — `safety.hard_deny`) hay vùng bảo vệ (`safety.i
 
 Report gốc **không đổi**: `items[]` vẫn dùng định dạng cũ (`safety: safe|review|info|protected`, `action`, `note`);
 `info` ở đó tương ứng `inventory`, `action: "trash"` ≈ `delete_mode: "trash"`, `action: null` ≈ `list-only`.
-Dashboard/app chưa hiển thị `features`; `clean` hiện **chỉ dọn `items[]`** — muốn dọn mục của tính năng thì pha sau
-nối vào `clean` (vẫn đi qua `safety.validate`).
+Dashboard/app chưa hiển thị `features`. `clean` dọn cả mục của tính năng (`mclib/featclean.py`): chọn bằng `--ids`,
+`--category <tính năng>` hoặc `--category <tính năng>:<kind>` (khoá `kind` qua `**extra`); mặc định chỉ `safe`,
+`--include-review` thêm `review`. `list-only`/`protected` **không bao giờ** bị dọn (kể cả `--force`); `permanent` cần
+thêm `--permanent`; `trash` đi qua `safety.validate` + Thùng rác + `logs/clean-*.jsonl`. Khai `owners=[bundle id |
+tên app]` và/hoặc `lock_dir=<thư mục có SingletonLock>` để `clean` bỏ qua mục khi app chủ đang chạy.
 
 ## Luật an toàn bắt buộc
 

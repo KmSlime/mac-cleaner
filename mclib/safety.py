@@ -25,7 +25,13 @@ PROTECTED = [os.path.expanduser(p) for p in ("~/Library/Keychains*", "~/.ssh*", 
 # Trong ~/Library chỉ dọn ở các vùng được quét; mọi thư mục khác (dữ liệu ứng dụng, thư mục đồng bộ…) được bảo vệ.
 LIBRARY_CLEANABLE = ("Caches", "Logs", "Containers", "Group Containers", "Preferences", "Developer")
 # Thư mục ẩn ở home: chỉ dọn các vùng cache này; còn lại (dữ liệu, model, cấu hình của các tool) được bảo vệ.
-DOT_CLEANABLE = (".cache", ".npm/_cacache", ".npm/_npx", ".gradle/caches")
+DOT_CLEANABLE = (".cache", ".npm/_cacache", ".npm/_npx", ".gradle/caches",
+                 ".bun/install/cache", ".yarn/berry/cache", ".nuget/packages")  # 3 mục cuối: module junk
+# Thư mục cache Chromium/Electron nằm trong Application Support (ngoài ~/Library/Caches): chỉ dọn được khi mục có
+# kind browser-cache/app-cache VÀ tên thư mục cuối đúng một trong các tên này (module junk).
+CHROMIUM_CACHE_DIRS = ("Cache", "Code Cache", "GPUCache", "GPUPersistentCache", "DawnCache", "DawnGraphiteCache",
+                       "DawnWebGPUCache", "GraphiteDawnCache", "GrShaderCache", "ShaderCache", "CachedData",
+                       "Service Worker/CacheStorage", "Service Worker/ScriptCache")
 # clean chỉ chạm các vùng này; path phải sâu ít nhất 2 cấp dưới vùng.
 ALLOWED_ROOTS = [HOME, "/Library/Caches", "/Library/Logs"]
 CLEANABLE = {"safe", "review"}
@@ -119,10 +125,21 @@ def is_protected(path, kind=""):
         top = path[len(lib):].split("/")[0]
         extra = (LEFTOVER_LIBRARY if kind in ("app-leftover", "agent-leftover") else
                  UNINSTALL_LIBRARY if kind == "app-uninstall" else ())
-        return top not in LIBRARY_CLEANABLE and top not in extra
+        return top not in LIBRARY_CLEANABLE and top not in extra and not _feature_cleanable(path, kind, top)
     if path.startswith(HOME + "/."):
         rel = path[len(HOME) + 1:]
         return not any(rel == c or rel.startswith(c + "/") for c in DOT_CLEANABLE)
+    return False
+
+
+def _feature_cleanable(path, kind, top):
+    """Ngoại lệ hẹp cho module junk: cache Chromium/Electron trong Application Support, firmware .ipsw của iTunes."""
+    if kind in ("browser-cache", "app-cache") and top == "Application Support":
+        rel = path.split("/Library/Application Support/", 1)[-1]  # phải là <app>/…/<tên cache>, không phải chính thư mục app
+        return (any(rel.endswith("/" + n) for n in CHROMIUM_CACHE_DIRS) and not os.path.islink(path)
+                and not any(w in rel.lower() for w in SENSITIVE_WORDS))  # mật khẩu/ví: giữ, kể cả thư mục cache
+    if kind == "firmware" and top == "iTunes":
+        return path.lower().endswith(".ipsw") and not os.path.islink(path)
     return False
 
 

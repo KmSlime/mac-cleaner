@@ -108,7 +108,8 @@ class StatusFeature(unittest.TestCase):
         res = status.collect(registry.ReportContext())
         json.dumps(res)
         self.assertEqual(res["items"], [])
-        self.assertEqual(set(res["summary"]), {"disk", "memory", "boot_time", "uptime_seconds", "load_avg"})
+        self.assertEqual(set(res["summary"]), {"disk", "memory", "boot_time", "uptime_seconds", "load_avg",
+                                               "cpu", "battery", "net", "devices", "alerts"})  # monitor (§3)
 
     def test_cli_json(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:
