@@ -26,6 +26,7 @@ lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/MacCleaner"
 strip -S "$APP/Contents/MacOS/MacCleaner"   # bỏ debug stab (chứa đường dẫn máy build)
 
 cp maccleaner.py "$APP/Contents/Resources/maccleaner.py"
+rsync -a --exclude "__pycache__" mclib "$APP/Contents/Resources/"   # maccleaner.py import mclib từ cạnh nó
 cp Web/board.html "$APP/Contents/Resources/Web/board.html"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
 cat > "$APP/Contents/Info.plist" <<PLIST

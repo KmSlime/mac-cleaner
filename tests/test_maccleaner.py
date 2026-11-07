@@ -153,10 +153,11 @@ class ForceDelete(unittest.TestCase):
 
 class TrashFallback(unittest.TestCase):
     def test_moves_into_home_trash_without_trash_binary(self):
-        old = mc.HOME, mc.TRASH_BIN
+        S = mc.safety  # to_trash nằm ở mclib/safety.py: vá biến của module đó (mc.to_trash là alias)
+        old = S.HOME, S.TRASH_BIN
         with tempfile.TemporaryDirectory() as h:
             try:
-                mc.HOME, mc.TRASH_BIN = h, os.path.join(h, "no-trash-bin")
+                S.HOME, S.TRASH_BIN = h, os.path.join(h, "no-trash-bin")
                 os.mkdir(os.path.join(h, ".Trash"))
                 for _ in range(2):  # trùng tên trong Thùng rác → thêm hậu tố giờ
                     f = os.path.join(h, "a.txt")
@@ -165,7 +166,7 @@ class TrashFallback(unittest.TestCase):
                     self.assertFalse(os.path.exists(f))
                 self.assertEqual(len(os.listdir(os.path.join(h, ".Trash"))), 2)
             finally:
-                mc.HOME, mc.TRASH_BIN = old
+                S.HOME, S.TRASH_BIN = old
 
 
 class Leftovers(unittest.TestCase):

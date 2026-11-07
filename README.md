@@ -15,12 +15,11 @@ git clone https://github.com/KmSlime/mac-cleaner.git && cd mac-cleaner && ./inst
 | Bước | Làm gì |
 |---|---|
 | Command Line Tools | Thiếu thì mở trình cài chính thức của Apple (cho Python 3 + Swift); cài xong chạy lại `./install.sh` |
-| Mole (`mo`) | Homebrew nếu có; không thì tải bản phát hành `V1.68.0`, **kiểm sha256** rồi chép vào `~/.local/share/mole` + `~/.local/bin/mo` (không chạy script cài của bên thứ ba) |
 | App **Mac Cleaner** | Build Universal từ source → `~/Applications/MacCleaner.app`. Thiếu Python 3 thì app tự hỏi và mở trình cài |
 | Lệnh `mac-cleaner` | `~/.local/bin/mac-cleaner` — dùng chung report với app (`~/Library/Application Support/MacCleaner`) |
-| Plugin Claude Code | Có `claude` thì cài plugin `mac-cleaner` (skill `mac-cleaner` — kiểm kê + dọn sâu bằng Mole —, hook xin duyệt) từ chính repo; không có thì bỏ qua |
+| Plugin Claude Code | Có `claude` thì cài plugin `mac-cleaner` (skill `mac-cleaner`, hook xin duyệt) từ chính repo; không có thì bỏ qua |
 
-Tuỳ chọn: `--no-app`, `--no-mole`, `--no-plugin`. Chỉ cần app: tải `.zip` ở trang Releases.
+Tuỳ chọn: `--no-app`, `--no-plugin` (`--no-mole` cũ vẫn nhận nhưng không còn tác dụng). Chỉ cần app: tải `.zip` ở trang Releases.
 Chỉ cần skill trong Claude Code (đã đăng nhập GitHub có quyền đọc repo): `/plugin install mac-cleaner --marketplace KmSlime/mac-cleaner`.
 
 ## Chạy
@@ -36,6 +35,7 @@ python3 maccleaner.py clean --category caches --yes          # dọn thật mộ
 python3 maccleaner.py clean --ids a1b2c3d4e5,... --yes       # dọn đúng các id (lấy từ report/app)
 python3 maccleaner.py clean --include-review ...             # gồm cả mục "cân nhắc"
 python3 maccleaner.py clean --ids <id> --force --yes          # xoá đích danh cả mục kiểm kê/bảo vệ (app, repo, plugin…)
+python3 maccleaner.py status [--json]           # tình trạng máy: ổ đĩa, RAM, uptime (tính năng mẫu trong mclib/features/)
 
 swift run MacCleaner                             # app desktop: quét lại, chọn, xem trước, dọn ngay trong UI
 swift run MacCleaner --snapshot x.png            # render report mới nhất ra ảnh rồi thoát
@@ -43,7 +43,7 @@ swift run MacCleaner --snapshot x.png            # render report mới nhất ra
 python3 -m unittest discover tests               # unit test
 ```
 
-Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 5.9+ cho app. Không có dependency ngoài.
+Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 5.9+ cho app. Không có dependency ngoài — **không còn phụ thuộc Mole** (`install.sh` không cài `mo` nữa).
 App `.app` ghi report/log vào `~/Library/Application Support/MacCleaner`; `swift run`/CLI ghi cạnh source (`reports/`, `logs/`, đã gitignore).
 
 ## Mục lục
@@ -118,7 +118,7 @@ Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13
 | caches | `~/Library/{Caches,Logs}`, `~/Library/Containers/*/Data/Library/Caches`, `/Library/{Caches,Logs}`, Xcode DerivedData/DeviceSupport/Archives, `simctl list devices unavailable`, `~/.npm`, `~/.gradle/caches`, `~/.cache/*`… |
 | junk | build artifact khi đi qua `~`, installer trong Downloads/Desktop/Documents, file backup trên toàn volume Data (`find -x`, gom theo thư mục + tên gốc, giữ bản mtime mới nhất), Containers/Preferences không khớp bundle id nào đang cài, Thùng rác |
 
-Bổ sung: [Mole](https://github.com/tw93/mole) (`mo clean`) dọn sâu hơn ở cấp app (Application Support caches, Homebrew cleanup…) — skill `mac-cleaner` chỉ cách dùng cả hai. Lưu ý: `mo clean` **xoá hẳn**, còn mac-cleaner luôn chuyển vào Thùng rác.
+Bổ sung (tuỳ chọn, tự cài nếu muốn): [Mole](https://github.com/tw93/mole) (`mo clean`) dọn sâu hơn ở cấp app (Application Support caches, Homebrew cleanup…) — skill `mac-cleaner` chỉ cách dùng cả hai. Lưu ý: `mo clean` **xoá hẳn**, còn mac-cleaner luôn chuyển vào Thùng rác.
 
 ## Giới hạn đã biết
 
@@ -130,15 +130,18 @@ Bổ sung: [Mole](https://github.com/tw93/mole) (`mo clean`) dọn sâu hơn ở
 
 ```
 maccleaner.py                  quét + dọn + xuất report (Python stdlib, có test)
+mclib/safety.py                rào an toàn dùng chung: vùng bảo vệ, chặn cứng SIP/thư mục gốc, app đang chạy, Thùng rác, log dọn
+mclib/registry.py              nạp tính năng từ mclib/features/ (lệnh con + report["features"]) — cách thêm: mclib/README.md
+mclib/features/                mỗi file một tính năng (status.py: mẫu chỉ đọc)
 Web/board.html                 toàn bộ UI (HTML/CSS/JS thuần, offline) — dùng cho cả app và report tĩnh
 Sources/MacCleaner/main.swift  cửa sổ AppKit + WKWebView, cầu nối JS → maccleaner.py
 scripts/make-app.sh            đóng gói .app Universal (arm64 + x86_64; ARCHS="arm64" để build nhanh)
-install.sh                     cài một lệnh: Command Line Tools, Mole, app, lệnh mac-cleaner, plugin Claude Code
+install.sh                     cài một lệnh: Command Line Tools, app, lệnh mac-cleaner, plugin Claude Code
 skills/mac-cleaner/           skill duy nhất: kiểm kê + dọn bằng mac-cleaner và Mole (plugin Claude Code, manifest ở .claude-plugin/)
 hooks/                         hook xin duyệt: Claude phải hỏi trước khi dọn thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
 scripts/classify.py            phân loại report / hệ thống file thành NÊN XOÁ · CÂN NHẮC · GIỮ (chạy sau mỗi scan qua hooks/post-scan/)
 hooks/post-scan/               hook chạy ngay sau scan (10-classify)
-tests/                         unit test (test_maccleaner.py, test_classify.py)
+tests/                         unit test (test_maccleaner.py, test_classify.py, test_features.py)
 LICENSE                        MIT
 ```
 
@@ -146,4 +149,4 @@ LICENSE                        MIT
 
 [MIT](LICENSE): được dùng, sửa, phân phối lại (kể cả thương mại), miễn giữ nguyên thông báo bản quyền. Phần mềm cung cấp "nguyên trạng", không bảo hành.
 
-Mole không nằm trong repo hay file phát hành: `install.sh` tải bản chính thức của nó (giấy phép GPL-3.0, [tw93/mole](https://github.com/tw93/mole)) và mac-cleaner chỉ gọi lệnh `mo` như một chương trình riêng.
+Mole không nằm trong repo hay file phát hành và `install.sh` không còn cài nó. Nếu bạn tự cài `mo` (giấy phép GPL-3.0, [tw93/mole](https://github.com/tw93/mole)), skill chỉ gọi nó như một chương trình riêng.
