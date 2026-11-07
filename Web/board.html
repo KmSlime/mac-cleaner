@@ -199,6 +199,32 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
 .busy { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line2); border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Khu Tính năng (report.features) */
+.fstats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.fstat { padding: 14px 16px; }
+.fstat .k { color: var(--dim); font-size: 12px; }
+.fstat .v { font: 500 20px var(--mono); margin-top: 6px; overflow-wrap: anywhere; }
+.kpi.stat { cursor: default; min-height: 132px; }
+.kpi.stat:hover { border-color: var(--line); }
+.fsec { margin-bottom: 16px; }
+.bars.wide .brow { grid-template-columns: 180px 1fr 90px; }
+.ft td.s { width: 30%; }
+td.k2 { color: var(--dim); font-size: 13px; }
+td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; color: var(--dim); text-align: left; font-size: 13px; }
+.trows { padding: 4px 24px 20px; }
+.trow { display: grid; grid-template-columns: minmax(140px, 260px) 1fr 90px 30px; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.trow .bl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow.kid { padding: 4px 0; border-top: 0; }
+.trow.kid .bl { padding-left: 18px; font-size: 12px; color: var(--faint); }
+.trow.kid .btrack { height: 6px; }
+.trow.kid .bv { font-size: 12px; color: var(--faint); }
+.cmd { font: 12px var(--mono); color: var(--text); word-break: break-all; white-space: normal; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; margin-top: 6px; }
+.li .cmd { margin-top: 4px; }
+.alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.alerts .warn { margin: 0; }
+.note { margin: 0 0 16px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: var(--card2); color: var(--dim); border: 1px solid var(--line); }
+.pill.crit { color: var(--red); background: rgba(248, 113, 113, .1); }
+
 @media (max-width: 1180px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); }
@@ -208,7 +234,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
   main { padding: 20px 16px 110px; }
   .kpis { grid-template-columns: minmax(0, 1fr); }
   .search { width: 100%; }
-  td.o, th.o, td.v, th.v { display: none; }
+  td.o, th.o, td.v, th.v, td.why, th.why, td.k2, th.k2 { display: none; }
 }
 </style>
 </head>
@@ -248,6 +274,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
     </div>
   </header>
 
+  <div id="ov">
   <section class="kpis" id="kpis"></section>
 
   <div class="grid2">
@@ -285,6 +312,8 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
     <section class="card"><div class="box-head"><h3 class="click" data-goto="git:repo">Git repos <span id="gcount"></span></h3></div><div class="box-sub">repo có thay đổi chưa commit lên đầu</div><div class="list" id="repos"></div></section>
     <section class="card"><div class="box-head"><h3 class="click" data-goto="plugins">Plugin theo app <span id="pcount"></span></h3></div><div class="box-sub">app extension (pluginkit) + plug-in cài thêm</div><div class="list" id="plugs"></div></section>
   </div>
+  </div>
+  <div id="fv" hidden></div>
 </div></main>
 
 <div id="selbar"><div class="t"><b id="selsize">0</b> · <span id="selcount">0 mục</span></div>
@@ -308,7 +337,7 @@ const CATS = [
   { key: 'caches', label: 'Cache & log', color: '#4ade80' },
   { key: 'junk', label: 'Junk', color: '#f472b6' },
 ];
-const SAFETY = { safe: 'an toàn', review: 'cân nhắc', info: 'kiểm kê', protected: 'bảo vệ' };
+const SAFETY = { safe: 'an toàn', review: 'cân nhắc', info: 'kiểm kê', inventory: 'kiểm kê', protected: 'bảo vệ' };
 const KIND = {
   app: 'Ứng dụng', 'app-extension': 'App extension', 'system-extension': 'System extension', editor: 'Extension editor',
   browser: 'Extension trình duyệt', binary: 'Git binary', repo: 'Git repo', 'user-cache': 'Cache người dùng', log: 'Log',
@@ -320,7 +349,7 @@ const KIND = {
 const kindLabel = k => KIND[k] || k;
 const PAGE = 300;
 const S = { data: null, cat: null, f: 'all', kind: null, owner: null, q: '', sel: new Set(), limit: PAGE, busy: false,
-            open: new Set(), bulk: null, lastIds: null, lastForce: false };
+            open: new Set(), bulk: null, lastIds: null, lastForce: false, feat: null, fkind: null, fq: '', flimit: PAGE };
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const post = msg => window.webkit?.messageHandlers?.cleaner?.postMessage(msg);
@@ -338,8 +367,9 @@ const fWhen = t => new Date(t).toLocaleString('vi-VN', { dateStyle: 'medium', ti
 const catOf = k => CATS.find(c => c.key === k) || { label: k, color: '#888' };
 const ownerOf = i => i.owner || '—';
 /// "Dọn được" theo khuyến nghị (safe/review). Mục khác vẫn xoá được nếu người dùng chọn đích danh (forced → --force).
-const cleanable = i => i.safety === 'safe' || i.safety === 'review';
-const forced = i => !cleanable(i);
+/// Mục tính năng (có `feature`): chỉ delete_mode `trash` mức safe/review mới dọn được từ board, không bao giờ --force.
+const cleanable = i => (i.safety === 'safe' || i.safety === 'review') && (!i.feature || i.delete_mode === 'trash');
+const forced = i => !i.feature && !cleanable(i);
 // Giống hard_deny() của maccleaner.py — chỗ macOS khoá (SIP) hoặc thư mục gốc: không xoá được, kể cả đích danh.
 const SIP = ['/System/', '/usr/', '/bin/', '/sbin/', '/private/var/db/', '/Library/Apple/'];
 const HOME_DIRS = new Set(['Library', 'Documents', 'Desktop', 'Downloads', 'Applications', 'Movies', 'Music', 'Pictures', 'Public']);
@@ -351,11 +381,11 @@ function locked(i) {
   if (home && p.startsWith(home + '/') && HOME_DIRS.has(p.slice(home.length + 1))) return 'Thư mục chuẩn của macOS — không xoá';
   return '';
 }
-const deletable = i => !locked(i);
+const deletable = i => !locked(i) && (!i.feature || cleanable(i));
 /// Cảnh báo cho mục ngoài khuyến nghị dọn, theo loại.
 function warnFor(i) {
   if (i.kind === 'trash') return 'Đổ Thùng rác: xoá VĨNH VIỄN mọi thứ trong Thùng rác, không khôi phục được. macOS có thể hỏi quyền cho Mac Cleaner điều khiển Finder.';
-  if (i.kind === 'app') return 'Ứng dụng sẽ vào Thùng rác (gỡ app). Cache và dữ liệu của app vẫn còn — muốn gỡ sạch dùng `mo uninstall`. App cài bằng quyền admin có thể báo lỗi quyền.';
+  if (i.kind === 'app') return 'Ứng dụng sẽ vào Thùng rác (gỡ app). Cache và dữ liệu của app vẫn còn — muốn gỡ sạch dùng `python3 maccleaner.py uninstall <bundle id>`. App cài bằng quyền admin có thể báo lỗi quyền.';
   if (i.kind === 'repo') return `Cả thư mục repo vào Thùng rác${i.dirty ? ` — đang có ${i.dirty} file thay đổi chưa commit` : ''}. Code chưa push sẽ mất khi đổ Thùng rác.`;
   if (i.kind === 'binary') return 'Xoá file chương trình git này — công cụ đang dùng nó sẽ lỗi.';
   if (i.category === 'plugins') return 'Plugin nằm trong bundle của app khác thì xoá có thể làm app đó lỗi chữ ký, không mở được.';
@@ -384,7 +414,7 @@ function view() {
 function renderSide() {
   const it = S.data.items;
   const stat = list => `<span class="n">${list.length}<br>${fSize(sum(list, i => i.size))}</span>`;
-  let h = `<button class="pitem ${!S.cat ? 'on' : ''}" data-c=""><span class="caret"></span><span class="name">Tổng quan</span>${stat(it)}</button>`;
+  let h = `<button class="pitem ${!S.cat && !S.feat ? 'on' : ''}" data-c=""><span class="caret"></span><span class="name">Tổng quan</span>${stat(it)}</button>`;
   for (const c of CATS) {
     const list = it.filter(i => i.category === c.key), open = S.open.has(c.key);
     h += `<div class="tnode"><button class="caret" data-tog="${c.key}" aria-expanded="${open}" aria-label="${open ? 'Thu gọn' : 'Mở'} ${c.label}"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 2l3 3-3 3"/></svg></button>
@@ -397,11 +427,19 @@ function renderSide() {
         + (list.length ? '' : '<div class="pitem kid" style="cursor:default">trống</div>') + '</div>';
     }
   }
-  $('#plist').innerHTML = h;
+  $('#plist').innerHTML = h + renderFeatSide();
   $('#gen').textContent = fWhen(S.data.generatedAt);
 }
 
 function renderHeader() {
+  $('#safety').style.display = S.feat ? 'none' : ''; $('#delall').style.display = S.feat ? 'none' : '';
+  if (S.feat) {
+    const f = featOf(S.feat), r = featRes(S.feat);
+    $('#crumb').textContent = 'Tính năng › ' + f.label; $('#title').textContent = f.label;
+    $('#sub').textContent = f.desc + (r?.seconds != null ? ` · đo trong ${r.seconds}s` : '');
+    $('#updated').textContent = inApp() ? 'Quét lúc ' + fWhen(S.data.generatedAt) : 'Report tĩnh · xoá bằng lệnh được copy';
+    return setBusy(S.busy);
+  }
   const name = S.cat ? catOf(S.cat).label + (S.kind ? ' › ' + kindLabel(S.kind) : '') : 'Tổng quan';
   $('#crumb').textContent = name; $('#title').textContent = S.kind ? kindLabel(S.kind) : (S.cat ? catOf(S.cat).label : 'Tổng quan');
   const d = S.data.disk;
@@ -488,6 +526,7 @@ function renderFilters() {
 }
 
 function renderTable() {
+  if (S.feat) return renderFeatRows();  // đang ở khu Tính năng: bảng của tính năng
   const rows = view().sort(bySize);
   const kinds = {};
   for (const i of S.data.items) if ((!S.cat || i.category === S.cat)) kinds[i.kind] = (kinds[i.kind] || 0) + 1;
@@ -538,6 +577,289 @@ function renderPlugins() {
   }).join('') || '<div class="empty">Không có plugin</div>';
 }
 
+// ---------- Tính năng (report.features — mclib/features/*) ----------
+// Board chỉ đọc + dọn mục `trash` qua luồng clean sẵn có. Lệnh đổi trạng thái hệ thống (maintain, startup disable,
+// privacy reset, uninstall --yes) chỉ hiện để copy, người dùng tự chạy trong Terminal.
+const FEATS = [
+  { key: 'status', label: 'Sức khoẻ máy', color: '#60a5fa', desc: 'ổ đĩa, RAM/swap, CPU, pin, mạng, thiết bị, cảnh báo — chỉ đọc', cmds: [['status', 'Xem lại trạng thái máy']] },
+  { key: 'junk', label: 'Rác hệ thống', color: '#f472b6', desc: 'cache trình duyệt/app, log container, plist hỏng… ngoài nhóm Cache & log', cmds: [['junk', 'Liệt kê lại rác hệ thống']] },
+  { key: 'space', label: 'Dung lượng', color: '#818cf8', desc: 'cây dung lượng thư mục home (tóm tắt nhanh trong scan)', cmds: [['analyze', 'Bản đồ dung lượng đủ của home'], ['large', 'File lớn và lâu không dùng']] },
+  { key: 'dupes', label: 'File trùng', color: '#2dd4bf', desc: 'file trùng y hệt (sha256), luôn giữ một bản — không chạy trong scan', cmds: [['dupes', 'Tìm file trùng trong home']], scan: false },
+  { key: 'cloud', label: 'Cloud', color: '#38bdf8', desc: 'thư mục đồng bộ cloud: bản local và phần chỉ còn trên cloud', cmds: [['cloud', 'Đo lại thư mục cloud']] },
+  { key: 'uninstall', label: 'Gỡ ứng dụng', color: '#c084fc', desc: 'ứng dụng, lần mở cuối, dung lượng kèm file liên quan', cmds: [['uninstall --list', 'Liệt kê app và lần mở cuối']] },
+  { key: 'updates', label: 'Cập nhật', color: '#a3e635', desc: 'bản cập nhật app (Sparkle, Homebrew cask) và macOS — không cài', cmds: [['updates', 'Kiểm tra cập nhật (dùng mạng)']] },
+  { key: 'startup', label: 'Khởi động', color: '#fb923c', desc: 'LaunchAgent/Daemon, login item, mục chạy nền', cmds: [['startup', 'Liệt kê mục khởi động']] },
+  { key: 'audit', label: 'Bám trụ & chữ ký', color: '#f87171', desc: 'kiểm kê cơ chế bám trụ + chữ ký mã (không phải quét virus)', cmds: [['audit', 'Kiểm kê lại'], ['audit --gatekeeper', 'Kiểm thêm notarize (chậm hơn)']] },
+  { key: 'privacy', label: 'Riêng tư', color: '#fbbf24', desc: 'dữ liệu trình duyệt, mục gần đây, quyền app (TCC)', cmds: [['privacy', 'Liệt kê dữ liệu riêng tư']] },
+  { key: 'maintain', label: 'Bảo trì', color: '#4ade80', desc: 'tác vụ bảo trì: Quick Look, LaunchServices, snapshot…', cmds: [['maintain list', 'Liệt kê tác vụ bảo trì']] },
+];
+const featOf = k => FEATS.find(f => f.key === k) || { key: k, label: k, color: '#888', desc: '', cmds: [] };
+const featList = () => FEATS.concat(Object.keys(S.data.features || {}).filter(k => !FEATS.some(f => f.key === k)).map(featOf));
+const featRes = k => (S.data.features || {})[k];
+const featItems = k => featRes(k)?.items || [];
+const MODE = { trash: 'Thùng rác', permanent: 'xoá hẳn', 'list-only': 'chỉ liệt kê' };
+Object.assign(KIND, {
+  'browser-cache': 'Cache trình duyệt', 'app-cache': 'Cache app', 'container-log': 'Log container', 'broken-pref': 'Plist hỏng',
+  'ai-model': 'Model AI', 'ios-backup': 'Backup iOS', firmware: 'Firmware iOS', 'cloud-root': 'Thư mục cloud', 'cloud-local': 'Bản local (cloud)',
+  'large-old': 'File lớn lâu không dùng', agent: 'LaunchAgent', daemon: 'LaunchDaemon', 'login-item': 'Login item', btm: 'Mục chạy nền',
+  'app-uninstall': 'Ứng dụng', 'browser-history': 'Lịch sử duyệt web', 'browser-cookies': 'Cookie', 'browser-session': 'Phiên trình duyệt',
+  'recent-items': 'Mục gần đây', 'tcc-db': 'CSDL quyền (TCC)',
+});
+/// Một tham số shell an toàn để copy.
+const sq = s => /^[\w@%+=:,./-]+$/.test(String(s)) ? String(s) : "'" + String(s).replace(/'/g, "'\\''") + "'";
+function scriptPath() {
+  if (window.MC_SCRIPT) return window.MC_SCRIPT;  // app gửi đường dẫn thật
+  const rp = S.data?.reportPath || '';
+  return /\/reports\/[^/]+$/.test(rp) ? rp.replace(/\/reports\/[^/]+$/, '/maccleaner.py') : 'maccleaner.py';
+}
+const mc = args => `python3 ${sq(scriptPath())} ${args}`;
+function shortPath(p) {
+  const home = S.data?.home || '';
+  let s = home && (p === home || p.startsWith(home + '/')) ? '~' + p.slice(home.length) : p || '';
+  return s.length > 80 ? s.slice(0, 30) + '…' + s.slice(-46) : s;
+}
+/// Lệnh (người dùng tự chạy) cho một mục tính năng: [lệnh đầy đủ, mô tả] hoặc null.
+function cmdFor(i) {
+  if (i.feature === 'startup' && i.can_disable && i.scope === 'user' && i.label)
+    return [mc(`startup disable ${sq(i.label)} --yes`), 'Tắt agent (đổi tên plist, hoàn tác bằng `startup enable`)'];
+  if (i.feature === 'uninstall' && i.safety !== 'protected')
+    return [mc(`uninstall ${sq(i.bundle_id || i.path)} --yes`), 'Gỡ app kèm file liên quan vào Thùng rác (bỏ --yes để xem trước)'];
+  if (i.delete_mode === 'permanent' && i.safety !== 'protected')
+    return [mc(`clean --report ${sq(S.data.reportPath)} --ids ${i.id} --permanent --yes`), 'Xoá hẳn, không hoàn tác'];
+  return null;
+}
+const TERM_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg>';
+const cmdBtn = (c, cls = '') => c ? `<button class="${cls}" data-cmd="${esc(c[0])}" title="${esc('Copy lệnh: ' + c[1])}" aria-label="Copy lệnh">${TERM_ICON}</button>` : '';
+const cmdRow = (cmd, label, extra = '') => `<div class="li"><div class="c"><div class="n">${esc(label)}${extra}</div><div class="cmd">${esc(cmd)}</div></div><button class="btn" data-cmd="${esc(cmd)}">Copy</button></div>`;
+function whyNot(i) {
+  if (i.safety === 'protected') return 'Mục được bảo vệ — chỉ liệt kê.';
+  if (i.delete_mode === 'list-only') return 'Chỉ liệt kê — board không dọn mục này.';
+  if (i.delete_mode === 'permanent') return 'Xoá hẳn (không hoàn tác) — board không làm; copy lệnh để tự chạy nếu chắc chắn.';
+  if (locked(i)) return locked(i) + '.';
+  return 'Mục kiểm kê — board chỉ dọn mục an toàn / cân nhắc.';
+}
+
+function featBadge(f) {
+  const r = featRes(f.key), list = featItems(f.key);
+  if (!r) return '<span class="n">—</span>';
+  if (r.error) return '<span class="n" style="color:var(--red)">lỗi</span>';
+  const s = r.summary || {};
+  if (f.key === 'status') return `<span class="n" ${s.alerts?.length ? 'style="color:var(--amber)"' : ''}>${s.alerts?.length || 0} ⚠</span>`;
+  if (f.key === 'maintain') return `<span class="n">${(s.maintenance || []).length}</span>`;
+  if (f.key === 'space') return `<span class="n">${fSize(s.size)}</span>`;
+  return `<span class="n">${list.length}${sum(list, i => i.size) ? '<br>' + fSize(sum(list, i => i.size)) : ''}</span>`;
+}
+function renderFeatSide() {
+  return '<div class="label">Tính năng</div>' + featList().map(f => `<button class="pitem ${S.feat === f.key ? 'on' : ''}" data-feat="${esc(f.key)}" title="${esc(f.desc)}"><span class="caret"></span><span class="dot" style="background:${f.color}"></span><span class="name">${esc(f.label)}</span>${featBadge(f)}</button>`).join('');
+}
+
+const stat = (k, v, title = '') => `<div class="card fstat" ${title ? `title="${esc(title)}"` : ''}><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
+const num = n => n == null ? '—' : Number(n).toLocaleString('vi-VN');
+function featStats(k, r) {
+  const s = r.summary || {}, it = r.items || [];
+  const by = sf => sum(it.filter(sf), i => i.size);
+  switch (k) {
+    case 'junk': return [['Mục', num(it.length)], ['Dọn an toàn', fSize(by(i => i.safety === 'safe' && i.delete_mode === 'trash'))],
+      ['Cân nhắc', fSize(by(i => i.safety === 'review' && i.delete_mode === 'trash'))], ['Chỉ liệt kê', num(it.filter(i => i.delete_mode === 'list-only').length)],
+      ['Trùng scan chính (bỏ)', num(s.deduped)], ['App đang chạy (bỏ)', num(s.skipped_running)]];
+    case 'space': return [['Tổng home', fSize(s.size)], ['Số file', num(s.files)], ['Đo trong', (s.seconds ?? '—') + ' s'], ['Kết quả', s.partial ? 'chưa đủ' : 'đủ']];
+    case 'cloud': return [['Nhà cung cấp', (s.providers || []).join(', ') || '—'], ['Bản local', fSize(s.localBytes)], ['Chỉ trên cloud', fSize(s.cloudOnlyBytes)]];
+    case 'uninstall': return [['Ứng dụng', num(s.apps)], [`Lâu không mở (> ${s.staleDays ?? '?'} ngày)`, num(s.stale)], ['Dung lượng app lâu không mở', fSize(s.staleBytes)], ['Tổng (app + file liên quan)', fSize(s.totalBytes)]];
+    case 'updates': return [['Có bản mới', num(s.updates)], ['App Sparkle', num(s.sparkleApps)], ['Mạng', s.offline ? 'không dùng' : 'có'], ['Lỗi', num((s.errors || []).length)]];
+    case 'startup': return [['Tổng', num(s.total)], ['Agent user', num(s.user_agents)], ['Agent hệ thống', num(s.system_agents)], ['Daemon', num(s.system_daemons)],
+      ['Login item', num(s.login_items)], ['Chạy nền', num(s.background_items)], ['Đã nạp', num(s.loaded)], ['Hỏng', num(s.broken)], ['Đã tắt', num(s.disabled)], ['Bảo vệ', num(s.protected)]];
+    case 'audit': return [['Tổng', num(s.total)], ['Có cờ', num(s.flagged)], ...Object.entries(s.flags || {}).map(([f, n]) => ['Cờ ' + f, num(n)]),
+      ['Cron', num(s.cron_jobs)], ['Chưa rõ notarize', num(s.notarized_unknown)], ['Extension trình duyệt', num(s.browser_extensions?.count)]];
+    case 'privacy': return [['Mục', num(s.items)], ['Dữ liệu trình duyệt', fSize(s.browser_bytes)], ['Trình duyệt', (s.browsers || []).length ? num(s.browsers.length) : '—'],
+      ['Quyền app', num(s.permissions)], ['Reset được', num(s.resettable)], ['Dịch vụ', num(s.services)], ['App có quyền', num(s.clients)]];
+    case 'maintain': { const t = s.maintenance || [];
+      return [['Tác vụ', num(t.length)], ['Chạy được (cấp user)', num(t.filter(x => x.runnable).length)], ['Cần sudo', num(t.filter(x => x.needsRoot).length)], ['Không có trên máy', num(t.filter(x => !x.available).length)]]; }
+    case 'status': return [];
+    default: return Object.entries(s).filter(([, v]) => v == null || typeof v !== 'object').slice(0, 12).map(([a, v]) => [a, v == null ? '—' : String(v)]);
+  }
+}
+/// Ghi chú trên đầu: lỗi, thiếu (partial), thiếu quyền, tính năng chưa hỗ trợ (cờ blocked).
+function featNotes(k, r) {
+  const s = r.summary || {}, out = [];
+  const blocked = [s, r, ...Object.values(s), ...Object.values(r)].filter(v => v && typeof v === 'object' && v.blocked);
+  for (const b of new Set(blocked)) out.push(['warn', 'Chưa hỗ trợ: ' + (b.note || b.reason || 'tính năng này bị chặn')]);
+  if (k === 'cloud' && s.note) out.push(['warn', 'Chưa hỗ trợ — giải phóng bản local (evict): ' + s.note]);
+  if (s.partial) out.push(['warn', k === 'space' ? 'Chưa đủ (partial): scan chỉ đo tối đa ~15 giây nên số liệu dưới đây thiếu. Đo đủ bằng lệnh `analyze` bên dưới.' : 'Chưa đủ (partial): hết thời hạn khi quét — kết quả thiếu.']);
+  const fda = Array.isArray(s.needsFDA) ? s.needsFDA.length : s.needsFDA === true ? 1 : 0;
+  if (fda || s.tcc_needsFDA) out.push(['warn', 'Cần Full Disk Access để đọc đủ' + (Array.isArray(s.needsFDA) && s.needsFDA.length ? ': ' + s.needsFDA.join(', ') : '') + ' (Cài đặt hệ thống › Quyền riêng tư & Bảo mật).']);
+  if (s.tcc_error) out.push(['warn', 'Không đọc được quyền app: ' + s.tcc_error]);
+  if (Array.isArray(s.errors) && s.errors.length) out.push(['warn', 'Lỗi khi đọc: ' + s.errors.slice(0, 3).map(e => typeof e === 'string' ? e : JSON.stringify(e)).join(' · ')]);
+  if (k === 'updates' && s.note) out.push(['note', s.note]);
+  if (k === 'audit' && s.advice) out.push(['note', s.advice]);
+  if (k === 'audit' && s.browser_extensions?.note) out.push(['note', 'Extension trình duyệt: ' + s.browser_extensions.note]);
+  return out.map(([c, t]) => `<div class="${c}">${esc(t)}</div>`).join('');
+}
+
+// ----- Bảng chuyên biệt -----
+function panelStatus(r) {
+  const s = r.summary || {}, d = s.disk || {}, m = s.memory || {}, c = s.cpu || {}, b = s.battery, n = s.net || {}, dv = s.devices || {};
+  const pct = (a, t) => t ? Math.min(100, a / t * 100) : 0;
+  const tone = p => p >= 90 ? 'var(--red)' : p >= 75 ? 'var(--amber)' : 'var(--green)';
+  const card = (label, color, v, vs, p) => `<div class="card kpi stat"><div class="k"><span class="dot" style="background:${color}"></span>${esc(label)}</div><div class="v">${esc(v)}</div><div class="vs">${esc(vs)}</div>${p == null ? '' : `<div class="meter"><i style="width:${p}%;background:${tone(p)}"></i></div>`}</div>`;
+  const up = s.uptime_seconds, d0 = Math.floor((up || 0) / 86400), h0 = Math.floor((up || 0) % 86400 / 3600);
+  const days = up == null ? null : d0 ? `${d0} ngày ${h0} giờ` : `${h0} giờ ${Math.floor(up % 3600 / 60)} phút`;
+  const sw = m.swap || {}, LV = { critical: 'warn hot', warn: 'warn', info: 'note' };
+  const devs = [...(dv.volumes || []), ...(dv.usb || []), ...(dv.bluetooth || [])].map(x => x.name).filter(Boolean);
+  const diskP = d.used_percent ?? pct(d.used, d.total), memP = pct(m.used_estimate, m.total);
+  return `<div class="alerts">${(s.alerts || []).map(a => `<div class="${LV[a.level] || 'note'}">${a.level === 'critical' ? '⛔' : a.level === 'warn' ? '⚠' : 'ℹ'} ${esc(a.message)}</div>`).join('') || '<div class="note">✓ Không có cảnh báo.</div>'}</div>
+  <section class="kpis">
+    ${card('Ổ đĩa', '#60a5fa', diskP == null ? '—' : diskP.toFixed(0) + '%', `dùng ${fSize(d.used)} / ${fSize(d.total)} · trống ${fSize(d.free)}`, diskP)}
+    ${card('RAM', '#c084fc', fSize(m.used_estimate), `/ ${fSize(m.total)} · áp lực ${m.pressure || '—'} · swap ${fSize(sw.used)}${sw.total ? ' / ' + fSize(sw.total) : ''}`, memP)}
+    ${card('CPU', '#fb923c', c.busy == null ? '—' : c.busy.toFixed(0) + '%', [c.user != null && `user ${c.user.toFixed(0)}% · sys ${c.sys.toFixed(0)}%`, c.cores && c.cores + ' lõi', c.model].filter(Boolean).join(' · ') || '—', c.busy)}
+    ${b ? card('Pin', '#4ade80', (b.percent ?? '—') + '%', [b.state, b.health_percent != null && `sức khoẻ ${Math.round(b.health_percent)}%`, b.CycleCount != null && b.CycleCount + ' chu kỳ', b.temperature_c != null && b.temperature_c + '°C'].filter(Boolean).join(' · '), null)
+        : card('Pin', '#4ade80', '—', 'máy không có pin / không đọc được', null)}
+  </section>
+  <section class="kpis">
+    ${card('Mạng (từ lúc khởi động)', '#38bdf8', '↓ ' + fSize(n.bytes_in), '↑ ' + fSize(n.bytes_out) + ' · ' + Object.keys(n.interfaces || {}).length + ' giao diện có lưu lượng', null)}
+    ${card('Uptime', '#a3e635', days || '—', (s.load_avg || []).length ? 'load ' + s.load_avg.join(' · ') : '', null)}
+    ${card('Thiết bị gắn ngoài', '#f472b6', String(devs.length), devs.slice(0, 4).join(' · ') || 'không có', null)}
+    ${card('Swap', '#fbbf24', fSize(sw.used), sw.total ? `/ ${fSize(sw.total)} · trống ${fSize(sw.free)}` : 'không dùng swap', sw.total ? pct(sw.used, sw.total) : null)}
+  </section>`;
+}
+function panelSpace(r) {
+  const s = r.summary || {}, top = s.top || [], total = s.size || Math.max(...top.map(t => t.size || 0), 1);
+  const w = v => Math.max(0.5, (v || 0) / total * 100);
+  const row = (t, kid) => `<div class="trow ${kid ? 'kid' : ''}"><div class="bl" title="${esc(t.path)}">${esc(t.name)}${!kid && t.files ? ` <span class="num" style="color:var(--faint)">${num(t.files)} file</span>` : ''}</div>
+    <div class="btrack"><i style="width:${w(t.size)}%;background:${kid ? 'var(--faint)' : 'var(--blue)'}"></i></div><div class="bv">${fSize(t.size)}</div>
+    ${t.kind === 'dir' && t.path ? cmdBtn([mc(`analyze ${sq(t.path)}`), 'Phân tích sâu ' + t.name], 'mini') : '<span></span>'}</div>`;
+  return `<section class="card fsec"><div class="box-head"><h3>Lớn nhất trong ${esc(shortPath(s.root || ''))} <span>${fSize(s.size)}${s.partial ? ' · chưa đủ (partial)' : ''}</span></h3></div>
+    <div class="box-sub">tỉ lệ theo tổng đã đo · nút ▸_ copy lệnh phân tích sâu thư mục đó</div>
+    <div class="trows">${top.map(t => row(t) + (t.children || []).slice(0, 4).map(c => row(c, true)).join('')).join('') || '<div class="empty">Không có dữ liệu</div>'}</div></section>`;
+}
+function panelJunk(r) {
+  const s = r.summary || {}, kinds = Object.entries(s.kinds || {}).sort((a, b) => b[1].size - a[1].size), max = Math.max(...kinds.map(([, v]) => v.size), 1);
+  return `<section class="card fsec"><div class="box-head"><h3>Theo loại</h3></div>
+    <div class="legend"><span><i style="background:var(--green)"></i>dọn được</span><span><i style="background:var(--faint)"></i>chỉ liệt kê</span></div>
+    <div class="bars wide">${kinds.map(([k, v]) => `<div class="brow" data-fk="${esc(k)}"><div class="bl">${esc(kindLabel(k))} <span class="num" style="color:var(--faint)">${v.count}</span></div>
+      <div class="btrack"><i style="width:${v.cleanable / max * 100}%;background:var(--green)"></i><i style="width:${(v.size - v.cleanable) / max * 100}%;background:var(--faint);opacity:.5"></i></div><div class="bv">${fSize(v.size)}</div></div>`).join('') || '<div class="empty">Không có dữ liệu</div>'}</div></section>
+    ${(s.snapshots || []).length ? `<section class="card fsec"><div class="box-head"><h3>Snapshot Time Machine local <span>${s.snapshots.length}</span></h3></div>
+      <div class="box-sub">board không xoá snapshot (không hoàn tác). ${esc(s.snapshot_hint || '')}</div>
+      <div class="list">${s.snapshots.map(x => `<div class="li"><div class="c"><div class="n">${esc(typeof x === 'string' ? x : x.name || JSON.stringify(x))}</div></div></div>`).join('')}</div></section>` : ''}`;
+}
+function panelCloud(r) {
+  const roots = r.summary?.roots || [];
+  return `<section class="card fsec"><div class="box-head"><h3>Thư mục đồng bộ <span>${roots.length}</span></h3></div><div class="list">${roots.map(x => `<div class="li"><span class="dot" style="background:${x.complete ? 'var(--green)' : 'var(--amber)'}"></span>
+    <div class="c"><div class="n">${esc(x.provider)} <span style="color:var(--faint)">· ${num(x.fileCount)} file${x.cloudOnlyFiles ? ` · ${num(x.cloudOnlyFiles)} chỉ trên cloud` : ''}</span></div><div class="m" title="${esc(x.root)}">${esc(shortPath(x.root))}${x.complete ? '' : ' · số liệu chưa đủ'}</div></div>
+    <span class="r">local ${fSize(x.localBytes)} · cloud ${fSize(x.cloudOnlyBytes)}</span></div>`).join('') || '<div class="empty">Không tìm thấy thư mục cloud</div>'}</div></section>`;
+}
+function panelMaintain(r) {
+  const t = r.summary?.maintenance || [];
+  const state = x => !x.available ? ['', 'không có trên máy'] : x.runnable ? ['safe', 'chạy được (user)'] : x.needsRoot ? ['protected', 'cần sudo'] : ['review', 'tự chạy'];
+  return `<section class="card fsec"><div class="box-head"><h3>Tác vụ bảo trì <span>${t.length}</span></h3><button class="btn" data-term>Mở Terminal</button></div>
+    <div class="box-sub">Board KHÔNG tự chạy tác vụ nào. Copy lệnh rồi chạy trong Terminal (nút Mở Terminal).</div>
+    <div class="list">${t.map(x => { const [c, l] = state(x), cmd = x.runnable ? mc(`maintain run ${sq(x.task)} --yes`) : x.command;
+      return `<div class="li"><div class="c"><div class="n">${esc(x.title)} <span class="pill ${c}"><i></i>${l}</span></div><div class="m">${esc(x.note || '')}${x.unavailable ? ' · ' + esc(x.unavailable) : ''}</div>
+        <div class="cmd">${esc(cmd)}</div>${x.runnable ? `<div class="m">chạy: ${esc(x.command)}</div>` : ''}</div>${x.available ? `<button class="btn" data-cmd="${esc(cmd)}">Copy</button>` : ''}</div>`; }).join('') || '<div class="empty">Không có tác vụ</div>'}</div></section>`;
+}
+function panelPrivacy(r) {
+  const p = (r.permissions || []).slice().sort((a, b) => b.resettable - a.resettable || String(a.service).localeCompare(b.service)), SHOW = 150;
+  return `<section class="card fsec"><div class="box-head"><h3>Quyền app (TCC) <span>${p.length}</span></h3><button class="btn" data-term>Mở Terminal</button></div>
+    <div class="box-sub">Board không reset quyền. Nút ▸_ copy lệnh \`privacy reset\` để tự chạy trong Terminal (nút Mở Terminal).</div>
+    <div class="scroll" style="max-height:420px"><table><thead><tr><th class="l">Dịch vụ</th><th class="l">App</th><th class="l">Quyền</th><th>Đổi lúc</th><th aria-label="Thao tác"></th></tr></thead><tbody>
+    ${p.slice(0, SHOW).map(x => `<tr style="cursor:default"><td class="l">${esc(x.service)}</td><td class="l o" style="max-width:340px" title="${esc(x.client)}">${esc(x.client)}</td><td class="l"><span class="pill ${x.auth === 'allowed' ? 'review' : ''}"><i></i>${esc(x.auth)}</span></td><td class="num">${esc(x.last_modified || '—')}</td>
+      <td class="ra">${x.resettable ? cmdBtn([mc(`privacy reset ${sq(x.service)} ${sq(x.client)} --yes`), `Reset quyền ${x.service} của ${x.client}`]) : `<span title="${esc(x.protected || 'không reset được')}" style="color:var(--faint);font-size:12px">—</span>`}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Không đọc được quyền app</td></tr>'}
+    </tbody></table>${p.length > SHOW ? `<div class="more sub">… và ${p.length - SHOW} quyền nữa — xem đủ: ${esc(mc('privacy --json'))}</div>` : ''}</div></section>`;
+}
+function panelUpdates(r) {
+  const u = r.updates || [];
+  if (!u.length) return '';
+  return `<section class="card fsec"><div class="box-head"><h3>App đã kiểm <span>${u.length}</span></h3></div><div class="list">${u.map(x => `<div class="li"><span class="dot" style="background:${x.status === 'update' ? 'var(--amber)' : x.status === 'current' ? 'var(--green)' : x.status === 'error' ? 'var(--red)' : 'var(--faint)'}"></span>
+    <div class="c"><div class="n">${esc(x.app)} <span style="color:var(--faint)">· ${esc(x.source)}</span></div><div class="m">${esc(x.current || '—')}${x.latest ? ' → ' + esc(x.latest) : ''}${x.error ? ' · ' + esc(x.error) : ''}</div></div>
+    <span class="r">${esc({ update: 'có bản mới', current: 'mới nhất', offline: 'chưa kiểm (offline)', error: 'lỗi' }[x.status] || x.status)}</span></div>`).join('')}</div></section>`;
+}
+const PANELS = { status: panelStatus, space: panelSpace, junk: panelJunk, cloud: panelCloud, maintain: panelMaintain, privacy: panelPrivacy, updates: panelUpdates };
+
+// ----- Bảng mục -----
+function featView() {
+  const q = S.fq.trim().toLowerCase();
+  return featItems(S.feat).filter(i => (!S.fkind || i.kind === S.fkind)
+    && (!q || `${i.name} ${i.path} ${i.reason} ${kindLabel(i.kind)} ${i.owner || ''} ${i.label || ''} ${i.bundle_id || ''}`.toLowerCase().includes(q)))
+    .sort((a, b) => bySize(a, b) || String(a.name).localeCompare(b.name));
+}
+function featTable(k, items) {
+  const can = items.some(i => deletable(i) && i.safety === 'safe');
+  return `<section class="card fsec" id="ftable"><div class="box-head"><h3>Mục <span id="fcount"></span></h3>
+      ${can ? '<button class="btn" id="fselall">Chọn mục an toàn</button>' : ''}
+      <label class="search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="fq" placeholder="Tìm tên, đường dẫn, ghi chú" aria-label="Tìm trong mục" value="${esc(S.fq)}"></label></div>
+    <div class="box-sub">chỉ mục <b>Thùng rác</b> mức an toàn/cân nhắc chọn được để xoá; mục chỉ liệt kê / bảo vệ không có ô chọn</div>
+    <div class="chips" id="fkinds"></div>
+    <div class="scroll"><table class="ft"><thead><tr><th><input type="checkbox" id="fpageall" aria-label="Chọn tất cả mục đang hiện"></th><th class="l">Mục</th><th class="l k2">Loại</th><th>Dung lượng</th><th>Mức</th><th class="l">Cách xoá</th><th class="l why">Ghi chú</th><th aria-label="Thao tác"></th></tr></thead>
+      <tbody id="frows"></tbody></table><div class="more" id="fmore"></div></div></section>`;
+}
+function renderFeatRows() {
+  if (!$('#frows')) return;
+  const all = featItems(S.feat), rows = featView(), shown = rows.slice(0, S.flimit), kinds = {};
+  for (const i of all) kinds[i.kind] = (kinds[i.kind] || 0) + 1;
+  $('#fkinds').innerHTML = Object.keys(kinds).length > 1 ? Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<button class="chip ${S.fkind === k ? 'on' : ''}" data-fk="${esc(k)}">${esc(kindLabel(k))} <b>${n}</b></button>`).join('') : '';
+  $('#fcount').textContent = `${rows.length} · ${fSize(sum(rows, i => i.size))}`;
+  $('#frows').innerHTML = shown.map(i => `<tr data-i="${i.id}">
+    <td>${deletable(i) ? `<input type="checkbox" data-x="${i.id}" ${S.sel.has(i.id) ? 'checked' : ''} aria-label="Chọn ${esc(i.name)}">` : ''}</td>
+    <td class="s"><div class="n" title="${esc(i.name)}">${esc(i.name)}</div><div class="m" title="${esc(i.path)}">${esc(shortPath(i.path))}</div></td>
+    <td class="l k2">${esc(kindLabel(i.kind))}</td><td class="num">${fSize(i.size)}</td>
+    <td><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety] || esc(i.safety)}</span></td>
+    <td class="l" style="color:var(--dim);font-size:13px">${MODE[i.delete_mode] || esc(i.delete_mode)}</td>
+    <td class="why" title="${esc(i.reason)}">${esc(i.reason)}</td>
+    <td class="ra">${cmdBtn(cmdFor(i))}${infoBtn(i, '')}${deletable(i) ? delBtn(i, '') : ''}</td></tr>`).join('')
+    || `<tr><td colspan="8" class="empty">Không có mục nào${S.fq.trim() || S.fkind ? ' khớp bộ lọc' : ''}</td></tr>`;
+  $('#fmore').innerHTML = rows.length > S.flimit ? `<button class="btn" id="fshowmore">Hiện thêm (${rows.length - S.flimit} mục)</button>` : '';
+  const sel = shown.filter(deletable);
+  $('#fpageall').checked = sel.length > 0 && sel.every(i => S.sel.has(i.id));
+  $('#fpageall').disabled = !sel.length;
+}
+function renderFeat() {
+  const k = S.feat, f = featOf(k), r = featRes(k);
+  let h = '';
+  if (!r) h += `<div class="note">Chưa có trong report — ${f.scan === false ? 'tính năng này không chạy trong scan (đọc nhiều file, tốn thời gian)' : 'bấm Quét lại để có dữ liệu'}. Chạy lệnh bên dưới trong Terminal.</div>`
+    + (k === 'dupes' ? '<div class="warn">Chưa hỗ trợ: ảnh gần giống cần Vision trong app Swift (pha sau) — hiện chỉ tìm file trùng y hệt.</div>' : '');
+  else if (r.error) h += `<div class="warn hot">Tính năng lỗi khi quét: ${esc(r.error)}</div>`;
+  else {
+    h += featNotes(k, r);
+    const st = featStats(k, r);
+    if (st.length) h += `<div class="fstats">${st.map(([a, v]) => stat(a, v)).join('')}</div>`;
+    if (PANELS[k]) h += PANELS[k](r);
+    if ((r.items || []).length || !PANELS[k]) h += featTable(k, r.items || []);
+  }
+  const cmds = f.cmds.map(([a, l]) => [mc(a), l]);
+  if (cmds.length) h += `<section class="card fsec"><div class="box-head"><h3>Lệnh</h3><button class="btn" data-term>Mở Terminal</button></div>
+    <div class="box-sub">Board không tự chạy lệnh đổi trạng thái hệ thống. Copy rồi chạy trong Terminal (nút Mở Terminal).</div>
+    <div class="list">${cmds.map(([c, l]) => cmdRow(c, l)).join('')}</div></section>`;
+  $('#fv').innerHTML = h;
+  renderFeatRows();
+}
+window.showFeature = k => { S.feat = k; S.cat = null; S.kind = null; S.owner = null; S.fkind = null; S.fq = ''; S.flimit = PAGE; if (S.data) draw(); $('main').scrollTo({ top: 0 }); };
+
+function openFeat(id) {
+  const i = byId[id], f = featOf(i.feature), can = deletable(i), c = cmdFor(i);
+  const skip = ['id', 'feature', 'name', 'path', 'size', 'safety', 'delete_mode', 'reason', 'kind', 'related'];
+  const extra = Object.entries(i).filter(([k, v]) => !skip.includes(k) && v !== '' && v != null && !(Array.isArray(v) && !v.length));
+  const val = v => typeof v === 'object' ? JSON.stringify(v).slice(0, 400) : String(v);
+  drawer(`<div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${f.color}"></span><span style="color:var(--dim)">${esc(f.label)} · ${esc(kindLabel(i.kind))}</span><span style="flex:1"></span><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety] || esc(i.safety)}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
+    <h2>${esc(i.name)}</h2>
+    <div class="actions">
+      <button class="btn" data-reveal="${esc(i.path)}">${inApp() ? 'Hiện trong Finder' : 'Copy đường dẫn'}</button>
+      <button class="btn" data-copy="${esc(i.path)}">Copy đường dẫn</button>
+      ${can ? `<button class="btn" data-toggle="${i.id}">${S.sel.has(i.id) ? 'Bỏ chọn' : 'Chọn để xoá'}</button><button class="btn" data-prev="${i.id}">Xem trước</button><button class="btn danger" data-del="${i.id}">Xoá → Thùng rác…</button>` : ''}
+    </div>
+    ${can ? '' : `<div class="sub" style="color:var(--faint);margin-top:10px">${esc(whyNot(i))}</div>`}
+    ${c ? `<div class="sec">Lệnh — chạy trong Terminal</div><div class="cmd">${esc(c[0])}</div><div class="sub" style="margin-top:6px">${esc(c[1])}. Board không tự chạy lệnh này.</div>
+      <div class="actions" style="margin-top:10px"><button class="btn" data-cmd="${esc(c[0])}">Copy lệnh</button><button class="btn" data-term>Mở Terminal</button></div>` : ''}
+    <dl class="kv">
+      <dt>Đường dẫn</dt><dd>${esc(i.path)}</dd>
+      <dt>Dung lượng</dt><dd>${fSize(i.size)}</dd>
+      <dt>Mức</dt><dd>${esc(i.safety)}</dd>
+      <dt>Cách xoá</dt><dd>${esc(MODE[i.delete_mode] || i.delete_mode)}</dd>
+      <dt>Ghi chú</dt><dd>${esc(i.reason || '—')}</dd>
+      ${extra.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(val(v))}</dd>`).join('')}
+      <dt>ID</dt><dd>${i.id}</dd>
+    </dl>
+    ${(i.related || []).length ? `<div class="sec">File liên quan (${i.related.length})</div>${i.related.map(x => `<div class="res"><span class="st ${x.safety === 'safe' ? 'ok' : 'dry-run'}">${fSize(x.size)}</span>${esc(x.path)}</div>`).join('')}` : ''}`);
+}
+
 function renderSel() {
   const items = [...S.sel].map(id => byId[id]).filter(Boolean);
   $('#selsize').textContent = fSize(sum(items, i => i.size));
@@ -549,6 +871,8 @@ function renderSel() {
 
 function draw() {
   if (!S.data) return;
+  $('#ov').hidden = !!S.feat; $('#fv').hidden = !S.feat;
+  if (S.feat) { renderSide(); renderHeader(); renderFeat(); return renderSel(); }
   renderSide(); renderHeader(); renderKpis(); renderBars(); renderTop(); renderTable(); renderOwners(); renderRepos(); renderPlugins(); renderSel();
 }
 /// Sau khi đổi bộ lọc từ chỗ khác trên trang: cuộn tới bảng để thấy kết quả ngay.
@@ -559,12 +883,13 @@ function showTable() {
   c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
 }
 function goTo(cat, kind = null, owner = null) {
-  S.cat = cat || null; S.kind = kind; S.owner = owner; S.q = ''; $('#q').value = ''; S.limit = PAGE;
+  S.feat = null; S.cat = cat || null; S.kind = kind; S.owner = owner; S.q = ''; $('#q').value = ''; S.limit = PAGE;
   if (S.cat) S.open.add(S.cat);
 }
 
 function openItem(id) {
   const i = byId[id]; if (!i) return;
+  if (i.feature) return openFeat(id);
   const lk = locked(i);
   const extra = Object.entries(i).filter(([k]) => !['id', 'category', 'kind', 'name', 'owner', 'version', 'path', 'size', 'safety', 'action', 'note'].includes(k) && i[k] !== '' && i[k] != null);
   drawer(`<div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${catOf(i.category).color}"></span><span style="color:var(--dim)">${catOf(i.category).label} · ${esc(kindLabel(i.kind))}</span><span style="flex:1"></span><span class="pill ${i.safety}"><i></i>${SAFETY[i.safety]}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
@@ -597,12 +922,16 @@ function preview(ids) {
   const items = ids.map(id => byId[id]).filter(i => i && deletable(i));
   if (!items.length) return;
   const force = items.some(forced);
+  if (force && items.some(i => i.feature)) return toast(MIXED);
   if (!inApp()) { copy(cleanCmd(items.map(i => i.id), force).replace(/ --yes$/, '')); toast('Đã copy lệnh xem trước'); return; }
   S.lastIds = items.map(i => i.id); S.lastForce = force; S.busy = true; setBusy(true);
   post('clean:' + JSON.stringify({ ids: S.lastIds, yes: false, force })); toast('Đang xem trước…');
 }
+/// Mục tính năng không đi chung lệnh với mục kiểm kê xoá đích danh (--force sẽ nới kiểm tra cho cả hai).
+const MIXED = 'Mục tính năng không xoá chung với mục kiểm kê chọn đích danh — xoá từng nhóm riêng';
 function runClean(ids, force) {
   if (!ids.length) return;
+  if (force && ids.some(id => byId[id]?.feature)) return toast(MIXED);
   if (!inApp()) { copy(cleanCmd(ids, force)); toast('Đã copy lệnh — dán vào Terminal để xoá'); return closeDrawer(); }
   S.lastIds = ids; S.lastForce = force; S.busy = true; setBusy(true);
   post('clean:' + JSON.stringify({ ids, yes: true, force }));
@@ -620,10 +949,10 @@ function confirmOne(id) {
     <h2>${esc(i.name)}</h2>
     <dl class="kv">
       <dt>Đường dẫn</dt><dd>${esc(i.path)}</dd>
-      <dt>Loại</dt><dd>${catOf(i.category).label} · ${esc(kindLabel(i.kind))}</dd>
+      <dt>Loại</dt><dd>${esc(i.feature ? featOf(i.feature).label : catOf(i.category).label)} · ${esc(kindLabel(i.kind))}</dd>
       <dt>Thuộc</dt><dd>${esc(i.owner || '—')}</dd>
       <dt>Dung lượng</dt><dd>${fSize(i.size)}</dd>
-      <dt>Ghi chú</dt><dd>${esc(i.note || '—')}</dd>
+      <dt>Ghi chú</dt><dd>${esc(i.note || i.reason || '—')}</dd>
       <dt>Cách xoá</dt><dd>${empty ? 'đổ Thùng rác — VĨNH VIỄN' : Array.isArray(i.action) ? esc(i.action.join(' ')) : 'chuyển vào Thùng rác (khôi phục được cho tới khi đổ Thùng rác)'}</dd>
     </dl>
     ${warn ? `<div class="warn ${forced(i) ? 'hot' : ''}">${esc(warn)}</div>` : ''}
@@ -673,7 +1002,8 @@ window.cleaned = res => {
     done.forEach(id => S.sel.delete(id));
     S.data.items = S.data.items.filter(i => !done.has(i.id) || i.kind === 'trash');
     for (const i of S.data.items) if (done.has(i.id)) i.size = 0;  // Thùng rác đã đổ: còn mục, dung lượng 0
-    for (const id of done) if (byId[id]?.kind !== 'trash') delete byId[id];
+    for (const f of Object.values(S.data.features || {})) if (Array.isArray(f?.items)) f.items = f.items.filter(i => !done.has(i.id));
+    for (const id of done) if (byId[id]?.kind !== 'trash' || byId[id]?.feature) delete byId[id];
     S.data.disk.free = res.freeAfter;
   }
   drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">${dry ? 'Xem trước' : 'Kết quả xoá'}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
@@ -699,8 +1029,9 @@ const itemsWhere = f => S.data.items.filter(f);
 document.addEventListener('click', e => {
   if (e.target.matches('input[data-x]')) { const id = e.target.dataset.x; e.target.checked ? S.sel.add(id) : S.sel.delete(id); renderSel(); renderTable(); return; }
   if (e.target.id === 'pageall') { for (const i of view().sort(bySize).slice(0, S.limit).filter(deletable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderTable(); return; }
-  if (e.target.matches('#ackone, #ackbulk, #withextra')) return;  // xử lý ở 'change'
-  const t = e.target.closest('[data-tog],[data-ck],[data-kf],[data-goto],[data-unf],[data-delowner],[data-delplug],[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#gobulk,#prevbulk,#delall,#close,#close2,#veil,#rescan,#theme,#logbtn,#termopen,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#goconfirm');
+  if (e.target.id === 'fpageall') { for (const i of featView().slice(0, S.flimit).filter(deletable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderFeatRows(); return; }
+  if (e.target.matches('#ackone, #ackbulk, #withextra, #fq')) return;  // xử lý ở 'change' / 'input'
+  const t = e.target.closest('[data-feat],[data-fk],[data-cmd],[data-term],#fselall,#fshowmore,[data-tog],[data-ck],[data-kf],[data-goto],[data-unf],[data-delowner],[data-delplug],[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#gobulk,#prevbulk,#delall,#close,#close2,#veil,#rescan,#theme,#logbtn,#termopen,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#goconfirm');
   if (!t) return;
   const id = t.id, d = t.dataset;
   if (id === 'close' || id === 'close2' || id === 'veil') return closeDrawer();
@@ -709,11 +1040,16 @@ document.addEventListener('click', e => {
   if (id === 'logbtn') return setTerm(!$('#term').classList.contains('on'));
   if (id === 'termclose') return setTerm(false);
   if (id === 'termclear') { LOG.length = 0; $('#termout').textContent = ''; return; }
-  if (id === 'termopen') {
+  if (id === 'termopen' || d.term != null) {
     if (inApp()) { post('terminal'); toast('Đang mở Terminal…'); }
     else { copy('tail -n 200 -F "$(ls -t logs/*.log | head -1)"'); toast('Đã copy lệnh xem log — dán vào Terminal ở thư mục mac-cleaner'); }
     return;
   }
+  if (d.feat != null) return window.showFeature(d.feat);
+  if (d.fk != null) { S.fkind = S.fkind === d.fk ? null : d.fk; S.flimit = PAGE; renderFeatRows(); return $('#ftable')?.scrollIntoView(); }
+  if (d.cmd != null) { copy(d.cmd); toast('Đã copy lệnh — dán vào Terminal (nút Mở Terminal)'); return; }
+  if (id === 'fselall') { for (const i of featView().filter(i => deletable(i) && i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderFeatRows(); }
+  if (id === 'fshowmore') { S.flimit += PAGE; return renderFeatRows(); }
   if (id === 'termcopy') { copy(LOG.join('\n')); toast('Đã copy log'); return; }
   if (id === 'showmore') { S.limit += PAGE; return renderTable(); }
   if (id === 'selall') { for (const i of view().filter(i => i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderTable(); }
@@ -772,6 +1108,7 @@ document.addEventListener('keydown', e => {
 });
 if (inApp() && store.get('term') === '1') setTerm(true);
 $('#q').addEventListener('input', e => { S.q = e.target.value; S.limit = PAGE; renderTable(); });
+document.addEventListener('input', e => { if (e.target.id === 'fq') { S.fq = e.target.value; S.flimit = PAGE; renderFeatRows(); } });
 document.documentElement.dataset.theme = store.get('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 
 // Entry point: app gọi render(data) sau mỗi lần quét; report tĩnh nhúng sẵn window.EMBEDDED.
@@ -779,6 +1116,7 @@ window.render = data => {
   S.data = data; S.busy = false; setBusy(false);
   for (const k in byId) delete byId[k];
   for (const i of data.items) byId[i.id] = i;
+  for (const f of Object.values(data.features || {})) for (const i of f?.items || []) if (i?.id && !byId[i.id]) byId[i.id] = i;
   for (const id of [...S.sel]) if (!byId[id]) S.sel.delete(id);
   draw();
 };

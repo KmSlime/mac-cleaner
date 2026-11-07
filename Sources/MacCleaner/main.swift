@@ -133,6 +133,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var web: WKWebView!
     var reportPath: String?
     let snapshotPath = args.firstIndex(of: "--snapshot").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
+    /// `--view <tính năng>` (kèm --snapshot): chụp khu Tính năng đó thay vì Tổng quan.
+    let snapshotView = args.firstIndex(of: "--view").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
 
     func applicationDidFinishLaunching(_ note: Notification) {
         guard pythonAvailable() else { offerInstallCommandLineTools(); return }
@@ -150,10 +152,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.backgroundColor = .black
         window.minSize = NSSize(width: 900, height: 600)
         window.contentView = web
-        window.setFrameAutosaveName("MacCleanerWindow")
-        if snapshotPath == nil { window.center() }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if snapshotPath == nil {
+            window.setFrameAutosaveName("MacCleanerWindow")
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            // Chụp ảnh: cửa sổ ngoài màn hình, không giành focus, không lưu vị trí cửa sổ.
+            window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+            window.orderBack(nil)
+        }
         web.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
     }
 
@@ -180,7 +188,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func render(_ json: String) {
-        web.evaluateJavaScript("window.render(JSON.parse(\(jsLiteral(json))))") { _, error in
+        // MC_SCRIPT: đường dẫn maccleaner.py thật, để board in đúng lệnh cho người dùng copy vào Terminal.
+        let view = snapshotPath == nil ? "" : snapshotView.map { "; window.showFeature && window.showFeature(\(jsLiteral($0)))" } ?? ""
+        web.evaluateJavaScript("window.MC_SCRIPT = \(jsLiteral(script.path)); window.render(JSON.parse(\(jsLiteral(json))))" + view) { _, error in
             if let error { NSLog("render failed: \(error)") }
             if let path = self.snapshotPath { self.snapshot(to: path) }
         }
@@ -312,5 +322,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-app.setActivationPolicy(.regular)
+app.setActivationPolicy(args.contains("--snapshot") ? .accessory : .regular)  // chụp ảnh: không hiện icon Dock
 app.run()
