@@ -5,11 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mac Cleaner</title>
 <style>
-/* Design tokens và bố cục dashboard */
+/* Design tokens. MỌI màu của board đi qua các biến này — host (vd Ciel Monitor) ghi đè bằng window.applyTheme({...}):
+   bg→--bg · surface→--card · surface2→--card2 · side→--side · text→--text · muted→--dim · faint→--faint · line→--line
+   accent→--accent · ok→--green · warn→--amber · danger→--red · info→--blue · font→--sans · mono→--mono.
+   Biến *-soft (nền nhạt của pill/cảnh báo) được tính lại từ màu gốc. Không có host → bộ mặc định dưới đây. */
 :root {
   --bg: #050505; --side: #070707; --card: #0d0d0f; --card2: #121215; --line: #1d1d22; --line2: #26262c;
   --text: #f4f4f5; --dim: #8b8b94; --faint: #5c5c66; --pill: #17171b; --hover: #141418;
   --green: #4ade80; --red: #f87171; --amber: #fbbf24; --blue: #818cf8; --track: #18181c;
+  --accent: #4ade80; --on-accent: #04130a;
+  --green-soft: rgba(74, 222, 128, .1); --red-soft: rgba(248, 113, 113, .1); --red-line: rgba(248, 113, 113, .45);
+  --amber-soft: rgba(251, 191, 36, .09); --blue-soft: rgba(129, 140, 248, .1); --accent-soft: rgba(74, 222, 128, .12);
+  --shadow: rgba(0, 0, 0, .45);
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   color-scheme: dark;
@@ -18,9 +25,14 @@
   --bg: #f6f6f7; --side: #fbfbfc; --card: #ffffff; --card2: #f4f4f6; --line: #e6e6ea; --line2: #d9d9df;
   --text: #111114; --dim: #62626c; --faint: #9a9aa3; --pill: #f0f0f3; --hover: #f5f5f8;
   --green: #16a34a; --red: #dc2626; --amber: #b45309; --blue: #4f46e5; --track: #ececf0;
+  --accent: #16a34a; --on-accent: #ffffff;
+  --green-soft: rgba(22, 163, 74, .1); --red-soft: rgba(220, 38, 38, .08); --red-line: rgba(220, 38, 38, .4);
+  --amber-soft: rgba(180, 83, 9, .08); --blue-soft: rgba(79, 70, 229, .08); --accent-soft: rgba(22, 163, 74, .1);
+  --shadow: rgba(20, 20, 30, .16);
   color-scheme: light;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: 14px/1.4 var(--sans); -webkit-font-smoothing: antialiased; display: flex; overflow: hidden; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -36,7 +48,7 @@ aside * { -webkit-app-region: no-drag; }
 .plist { overflow: auto; flex: 1; }
 .pitem { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 10px; color: var(--dim); text-align: left; }
 .pitem:hover { background: var(--hover); color: var(--text); }
-.pitem.on { background: var(--card2); color: var(--text); }
+.pitem.on { background: var(--card2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
 .pitem .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pitem .n { font: 12px var(--mono); color: var(--faint); text-align: right; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -52,20 +64,8 @@ button.caret:hover { color: var(--text); background: var(--hover); }
 .pitem.kid .n { font-size: 11px; }
 .foot { border-top: 1px solid var(--line); padding: 14px 8px 0; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--faint); }
 .foot div { flex: 1; }
-/* Terminal log */
-.term { position: fixed; left: 252px; right: 0; bottom: 0; height: 280px; background: var(--card); border-top: 1px solid var(--line2);
-        display: none; flex-direction: column; z-index: 30; box-shadow: 0 -12px 32px rgba(0,0,0,.25); }
-.term.on { display: flex; }
-.term .bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); }
-.term .bar b { color: var(--text); font-weight: 600; font-size: 13px; }
-.term .bar .fill { flex: 1; }
-.term .bar .btn { padding: 4px 10px; font-size: 12px; border-radius: 8px; }
-.term pre { margin: 0; flex: 1; overflow: auto; padding: 10px 16px 14px; font: 12px/1.6 var(--mono); color: var(--dim); white-space: pre-wrap; word-break: break-word; }
-.term pre .s { color: var(--text); font-weight: 600; margin-top: 6px; }
-.term pre .ok { color: var(--green); } .term pre .err { color: var(--red); } .term pre .cmd { color: var(--blue); }
-body.term-open main { padding-bottom: 320px; }
-body.term-open .toast { bottom: 300px; }
-#logbtn.live { border-color: var(--green); }
+/* Log quét/dọn chạy ở terminal THẬT của host (app Mac Cleaner / Ciel Monitor) — board chỉ hiện dòng trạng thái. */
+#termbtn.live { border-color: var(--accent); }
 .icon-btn { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: var(--dim); }
 .icon-btn:hover { background: var(--hover); color: var(--text); }
 
@@ -83,10 +83,12 @@ h1 { font-size: 26px; margin: 6px 0 4px; letter-spacing: -.02em; }
 .seg button.on { background: var(--card2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line2); }
 .btn { padding: 8px 15px; border: 1px solid var(--line2); border-radius: 11px; background: var(--card); font-size: 13px; }
 .btn:hover { background: var(--hover); }
-.btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
 .btn.danger { background: var(--red); color: #fff; border-color: var(--red); }
-.btn.danger-line { color: var(--red); border-color: rgba(248, 113, 113, .45); }
-.btn.danger-line:hover { background: rgba(248, 113, 113, .1); }
+.btn.danger-line { color: var(--red); border-color: var(--red-line); }
+.btn.danger-line:hover { background: var(--red-soft); }
+.btn .badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 9px; background: var(--on-accent); color: var(--accent); font: 600 11px/18px var(--mono); }
 .hbtns { display: flex; gap: 8px; justify-content: flex-end; }
 .updated { font-size: 11px; color: var(--faint); text-align: right; margin-top: 4px; }
 
@@ -97,7 +99,7 @@ h1 { font-size: 26px; margin: 6px 0 4px; letter-spacing: -.02em; }
 .kpi.on { box-shadow: inset 0 0 0 1px var(--dim); }
 h3.click { cursor: pointer; } h3.click:hover { text-decoration: underline; }
 #tablecard.flash { animation: flash 1.2s ease; }
-@keyframes flash { 0% { box-shadow: 0 0 0 2px var(--green); } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes flash { 0% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 10px; }
 .filters:empty { display: none; }
 .kpi .k { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
@@ -109,7 +111,7 @@ h3.click { cursor: pointer; } h3.click:hover { text-decoration: underline; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; align-items: start; }
 .box-head { display: flex; align-items: center; gap: 12px; padding: 20px 24px 14px; flex-wrap: wrap; }
-.box-head h3 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+.box-head h3 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; min-width: 220px; }
 .box-head h3 span { color: var(--faint); font-weight: 400; }
 .box-sub { color: var(--faint); font-size: 12px; padding: 0 24px; margin-top: -10px; margin-bottom: 8px; }
 .search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line2); background: var(--bg); border-radius: 10px; padding: 7px 12px; width: 260px; color: var(--faint); }
@@ -143,8 +145,8 @@ td.ra svg { width: 15px; height: 15px; }
 .mini.del:hover:not(:disabled) { color: var(--red); }
 .mini:disabled { opacity: .28; cursor: not-allowed; }
 .mini svg { width: 15px; height: 15px; }
-.warn.hot { background: rgba(248, 113, 113, .1); color: var(--red); }
-.warn { margin: 14px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: rgba(251, 191, 36, .08); color: var(--amber); }
+.warn.hot { background: var(--red-soft); color: var(--red); }
+.warn { margin: 14px 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: var(--amber-soft); color: var(--amber); }
 .ack { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--dim); margin: 10px 0 4px; }
 tbody tr:hover { background: var(--hover); }
 td.s { white-space: normal; max-width: 0; width: 50%; text-align: left; }
@@ -154,10 +156,10 @@ td.o { max-width: 180px; overflow: hidden; text-overflow: ellipsis; color: var(-
 .scroll { max-height: 760px; overflow: auto; }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 8px; background: var(--pill); color: var(--dim); font-size: 12px; }
 .pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.pill.safe { color: var(--green); background: rgba(74, 222, 128, .1); }
-.pill.review { color: var(--amber); background: rgba(251, 191, 36, .1); }
-.pill.protected { color: var(--blue); background: rgba(129, 140, 248, .1); }
-input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cursor: pointer; }
+.pill.safe { color: var(--green); background: var(--green-soft); }
+.pill.review { color: var(--amber); background: var(--amber-soft); }
+.pill.protected { color: var(--blue); background: var(--blue-soft); }
+input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 12px; }
 .chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--line2); border-radius: 10px; background: var(--card2); font-size: 12px; color: var(--dim); }
 .chip.on { color: var(--text); box-shadow: inset 0 0 0 1px var(--dim); }
@@ -176,7 +178,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
 .tbar { height: 6px; border-radius: 3px; margin-top: 5px; opacity: .85; }
 
 #selbar { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 140%); transition: transform .2s ease; display: flex; align-items: center; gap: 14px;
-  background: var(--card2); border: 1px solid var(--line2); border-radius: 16px; padding: 10px 12px 10px 20px; box-shadow: 0 10px 40px rgba(0,0,0,.35); max-width: calc(100vw - 32px); }
+  background: var(--card2); border: 1px solid var(--line2); border-radius: 16px; padding: 10px 12px 10px 20px; box-shadow: 0 10px 40px var(--shadow); max-width: calc(100vw - 32px); }
 #selbar.on { transform: translate(-50%, 0); }
 #selbar .t { font-size: 13px; color: var(--dim); white-space: nowrap; }
 #selbar .t b { color: var(--text); font: 500 15px var(--mono); }
@@ -196,7 +198,7 @@ input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--green); cu
 .st.ok { color: var(--green); } .st.skip, .st.error { color: var(--red); } .st.dry-run { color: var(--amber); }
 .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--card2); border: 1px solid var(--line2); padding: 8px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 .toast.on { opacity: 1; }
-.busy { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line2); border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+.busy { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Khu Tính năng (report.features) */
@@ -223,17 +225,82 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
 .alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .alerts .warn { margin: 0; }
 .note { margin: 0 0 16px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: var(--card2); color: var(--dim); border: 1px solid var(--line); }
-.pill.crit { color: var(--red); background: rgba(248, 113, 113, .1); }
+.pill.crit { color: var(--red); background: var(--red-soft); }
+
+/* Bố cục tổng quan: dung lượng → theo mức an toàn → theo nhóm → chi tiết */
+.sect { display: flex; align-items: baseline; gap: 10px; margin: 28px 2px 12px; }
+.sect h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.sect span { color: var(--faint); font-size: 12px; }
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 28px; padding: 22px 24px; align-items: center; }
+.hero .big { font: 600 34px var(--mono); letter-spacing: -.02em; }
+.hero .big small { font: 400 14px var(--sans); color: var(--dim); margin-left: 8px; letter-spacing: 0; }
+.hero .cap { color: var(--dim); font-size: 13px; margin-bottom: 4px; }
+.hero .side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.hero .side .sub { text-align: right; }
+.hero .disk { grid-column: 1 / -1; }
+.hero .meter { height: 12px; border-radius: 6px; margin-top: 0; }
+.hero .legend { padding: 10px 0 0; flex-wrap: wrap; }
+.hero .done { color: var(--green); font-size: 14px; }
+.kpis.k3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.scanbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 16px; border-radius: 14px; background: var(--accent-soft); border: 1px solid var(--line2); font-size: 13px; }
+.scanbar .t { flex: 1; min-width: 0; }
+.scanbar .t b { display: block; font-weight: 600; }
+.scanbar .t span { display: block; color: var(--dim); font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.blank { padding: 56px 24px; text-align: center; }
+.blank h2 { margin: 14px 0 6px; font-size: 20px; }
+.blank p { color: var(--dim); font-size: 13px; margin: 0 auto 18px; max-width: 520px; }
+.blank .ico { width: 44px; height: 44px; margin: 0 auto; color: var(--accent); }
+
+/* Popup "Đề xuất xoá" — do mac-cleaner giữ (không phải host) */
+/* Hiện tức thì (không transition): WKWebView ngoài màn hình / bị che có thể đứng animation → popup kẹt ở opacity 0. */
+#pveil { position: fixed; inset: 0; background: var(--shadow); display: none; z-index: 40; }
+#pveil.on { display: block; }
+#prop { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none;
+  width: min(760px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 48px)); flex-direction: column; z-index: 41;
+  background: var(--card); border: 1px solid var(--line2); border-radius: 18px; box-shadow: 0 24px 80px var(--shadow); }
+#prop.on { display: flex; }
+#prop .ph { padding: 20px 24px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
+#prop .ph h2 { margin: 0 0 4px; font-size: 19px; }
+#prop .pb { overflow: auto; padding: 8px 24px 16px; flex: 1; }
+#prop .pf { border-top: 1px solid var(--line); padding: 14px 24px 18px; display: flex; flex-direction: column; gap: 12px; }
+#prop .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#prop .row .fill { flex: 1; }
+#prop .total { font-size: 14px; }
+#prop .total b { font: 600 15px var(--mono); }
+.ptier { margin-top: 14px; }
+.ptier > .h { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; font-weight: 600; }
+.ptier > .h span { color: var(--faint); font-weight: 400; font-size: 12px; }
+.pgrp { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+.pgrp > label { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--card2); font-size: 13px; color: var(--dim); cursor: pointer; }
+.pgrp > label .fill { flex: 1; }
+.prow { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.prow:hover { background: var(--hover); }
+.prow .c { flex: 1; min-width: 0; }
+.prow .n, .prow .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prow .n { font-size: 13px; }
+.prow .m { font: 11px var(--mono); color: var(--faint); margin-top: 1px; }
+.prow .r { font: 12px var(--mono); color: var(--dim); white-space: nowrap; }
+.pmore { padding: 7px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); }
+.seg.mode button.on.perm { background: var(--red-soft); color: var(--red); box-shadow: inset 0 0 0 1px var(--red-line); }
+.hint { font-size: 12px; color: var(--faint); }
+.hint.hot { color: var(--red); }
+.pconfirm { border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 12px; padding: 12px 14px; color: var(--text); font-size: 13px; }
+.pconfirm b { color: var(--red); }
 
 @media (max-width: 1180px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis.k3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
   aside { display: none; }
   main { padding: 20px 16px 110px; }
-  .kpis { grid-template-columns: minmax(0, 1fr); }
+  .kpis, .kpis.k3 { grid-template-columns: minmax(0, 1fr); }
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .hero .side { align-items: flex-start; }
+  .hero .side .sub { text-align: left; }
   .search { width: 100%; }
+  #prop .pf .row { flex-direction: column; align-items: stretch; }
   td.o, th.o, td.v, th.v, td.why, th.why, td.k2, th.k2 { display: none; }
 }
 </style>
@@ -241,7 +308,7 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
 <body>
 <aside>
   <div class="logo">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 19l4-9 4 6 2-3 3 6" fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 19l4-9 4 6 2-3 3 6" fill="none" style="stroke:var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     mac cleaner
   </div>
   <div class="label">Mục lục</div>
@@ -261,22 +328,27 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
       <h1 id="title">Tổng quan</h1>
       <div class="sub" id="sub">Đang tải dữ liệu…</div>
     </div>
-    <div class="seg" id="safety">
-      <button data-f="all" class="on">Tất cả</button><button data-f="safe">Dọn an toàn</button><button data-f="review">Cân nhắc</button><button data-f="info">Kiểm kê</button>
-    </div>
     <div>
       <div class="hbtns">
-        <button class="btn" id="logbtn" title="Terminal log (⌘L)">Log</button>
+        <button class="btn" id="termbtn" title="Terminal (⌘L): log quét/dọn trực tiếp, Ctrl-C để gõ lệnh">Terminal</button>
         <button class="btn" id="rescan">Quét lại</button>
-        <button class="btn danger-line" id="delall" title="Xoá mọi mục đang hiện trong bảng (theo nhóm và bộ lọc hiện tại)">Xoá toàn bộ</button>
+        <button class="btn primary" id="propbtn" title="Đề xuất xoá: chọn mục khuyến nghị / cân nhắc rồi xác nhận">Đề xuất xoá</button>
       </div>
       <div class="updated" id="updated"></div>
     </div>
   </header>
 
-  <div id="ov">
-  <section class="kpis" id="kpis"></section>
+  <div class="scanbar" id="scanbar" hidden><span class="busy"></span><div class="t"><b id="scantitle">Đang quét…</b><span id="scanstep"></span></div>
+    <button class="btn" data-term>Xem ở Terminal</button></div>
+  <section class="card blank" id="blank" hidden></section>
 
+  <div id="ov">
+  <section class="card hero" id="hero"></section>
+
+  <div class="sect"><h2>Theo mức an toàn</h2><span>bấm thẻ để lọc bảng chi tiết</span></div>
+  <section class="kpis k3" id="kpis"></section>
+
+  <div class="sect"><h2>Theo nhóm</h2><span>dung lượng dọn được của từng nhóm và các mục lớn nhất</span></div>
   <div class="grid2">
     <section class="card">
       <div class="box-head"><h3>Dung lượng có thể giải phóng</h3></div>
@@ -290,10 +362,15 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
     </section>
   </div>
 
+  <div class="sect"><h2>Chi tiết</h2><span>mọi mục đã quét — lọc theo mức, loại, tìm kiếm; tick để xoá nhiều mục</span></div>
   <section class="card" style="margin-bottom:16px" id="tablecard">
     <div class="box-head">
       <h3 id="tabletitle">Tất cả mục <span id="icount"></span></h3>
+      <div class="seg" id="safety">
+        <button data-f="all" class="on">Tất cả</button><button data-f="safe">Dọn an toàn</button><button data-f="review">Cân nhắc</button><button data-f="info">Kiểm kê</button>
+      </div>
       <button class="btn" id="selall">Chọn mục an toàn</button>
+      <button class="btn danger-line" id="delall" title="Xoá mọi mục đang hiện trong bảng (theo nhóm và bộ lọc hiện tại)">Xoá toàn bộ</button>
       <label class="search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="Tìm tên, app, đường dẫn" aria-label="Tìm kiếm"></label>
     </div>
     <div class="filters" id="filters"></div>
@@ -307,6 +384,7 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
     </div>
   </section>
 
+  <div class="sect"><h2>Theo chủ sở hữu</h2><span>cache theo app, repo git, plugin theo app</span></div>
   <div class="grid3">
     <section class="card"><div class="box-head"><h3 class="click" data-goto="caches">App chiếm cache <span id="ocount"></span></h3></div><div class="box-sub">cache + log + container, gộp theo app</div><div class="list" id="owners"></div></section>
     <section class="card"><div class="box-head"><h3 class="click" data-goto="git:repo">Git repos <span id="gcount"></span></h3></div><div class="box-sub">repo có thay đổi chưa commit lên đầu</div><div class="list" id="repos"></div></section>
@@ -318,13 +396,9 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
 
 <div id="selbar"><div class="t"><b id="selsize">0</b> · <span id="selcount">0 mục</span></div>
   <button class="btn" id="selclear">Bỏ chọn</button><button class="btn" id="preview">Xem trước</button><button class="btn danger" id="doclean">Xoá → Thùng rác</button></div>
-<section class="term" id="term" aria-label="Terminal log">
-  <div class="bar"><b>Terminal log</b><span id="termstat"></span><span class="fill"></span>
-    <button class="btn" id="termopen" title="Mở Terminal.app thật: xem log trực tiếp, Ctrl-C để gõ lệnh">Mở Terminal</button><button class="btn" id="termcopy">Copy</button><button class="btn" id="termclear">Xoá</button>
-    <button class="icon-btn" id="termclose" title="Đóng" aria-label="Đóng terminal log">✕</button></div>
-  <pre id="termout" aria-live="polite"></pre>
-</section>
 <div id="veil"></div>
+<div id="pveil"></div>
+<section id="prop" role="dialog" aria-modal="true" aria-labelledby="proptitle"></section>
 <aside id="drawer" role="dialog" aria-modal="true" aria-label="Chi tiết"></aside>
 <div class="toast" id="toast"></div>
 <!--EMBED-->
@@ -348,7 +422,7 @@ const KIND = {
 };
 const kindLabel = k => KIND[k] || k;
 const PAGE = 300;
-const S = { data: null, cat: null, f: 'all', kind: null, owner: null, q: '', sel: new Set(), limit: PAGE, busy: false,
+const S = { data: null, cat: null, f: 'all', kind: null, owner: null, q: '', sel: new Set(), limit: PAGE, busy: false, scanning: false, loading: !!window.webkit?.messageHandlers?.cleaner, step: '', error: '',
             open: new Set(), bulk: null, lastIds: null, lastForce: false, feat: null, fkind: null, fq: '', flimit: PAGE };
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -396,7 +470,8 @@ function warnFor(i) {
 }
 const ICON = {
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>'
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>',
+  scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg>'
 };
 const delTitle = i => locked(i) || (i.kind === 'trash' ? 'Đổ Thùng rác…' : forced(i) ? 'Xoá (mục kiểm kê — cần xác nhận)…' : 'Xoá (chuyển vào Thùng rác)…');
 const delBtn = (i, cls = 'mini') => `<button class="${cls} del" data-del="${i.id}" ${deletable(i) ? '' : 'disabled'} title="${esc(delTitle(i))}" aria-label="Xoá ${esc(i.name)}">${ICON.trash}</button>`;
@@ -432,7 +507,8 @@ function renderSide() {
 }
 
 function renderHeader() {
-  $('#safety').style.display = S.feat ? 'none' : ''; $('#delall').style.display = S.feat ? 'none' : '';
+  const n = proposal().safe.length;
+  $('#propbtn').innerHTML = 'Đề xuất xoá' + (n ? `<span class="badge">${n}</span>` : '');
   if (S.feat) {
     const f = featOf(S.feat), r = featRes(S.feat);
     $('#crumb').textContent = 'Tính năng › ' + f.label; $('#title').textContent = f.label;
@@ -449,50 +525,72 @@ function renderHeader() {
   setBusy(S.busy);
 }
 
-// ---------- Terminal log ----------
-const LOG = [], LOG_MAX = 3000;
+// ---------- Trạng thái quét ----------
+// Log đầy đủ của quét/dọn chạy ở terminal PTY thật của host (app Mac Cleaner: panel terminal native; Ciel Monitor:
+// terminal SwiftTerm nhúng). Board không giữ view log riêng — chỉ dòng trạng thái + nút mở terminal (message 'terminal').
 function setBusy(on) {
-  $('#rescan').disabled = on; $('#delall').disabled = on;
+  $('#rescan').disabled = on; $('#delall').disabled = on; $('#propbtn').disabled = on || !S.data;
   $('#rescan').innerHTML = on ? '<span class="busy"></span>Đang chạy…' : 'Quét lại';
-  $('#logbtn').classList.toggle('live', on);
-  $('#termstat').innerHTML = on ? '<span class="busy"></span> đang chạy' : '';
+  $('#termbtn').classList.toggle('live', on);
+  $('#scanbar').hidden = !(on && S.scanning && S.data);
 }
-function setTerm(on) { $('#term').classList.toggle('on', on); document.body.classList.toggle('term-open', on); store.set('term', on ? '1' : '0'); }
-function logClass(l) {
-  if (l.startsWith('$ ')) return 'cmd';
-  if (/^\s*✗|Traceback|Error|lỗi|\[error|\[skip/i.test(l)) return 'err';
-  if (/^\s*✓|\[ok/.test(l)) return 'ok';
-  return l.startsWith('▸') ? 's' : '';
+function openTerminal() {
+  if (inApp()) return post('terminal');
+  copy('tail -n 200 -F "$(ls -t logs/*.log | head -1)"'); toast('Đã copy lệnh xem log — dán vào Terminal ở thư mục mac-cleaner');
 }
 window.log = line => {
-  LOG.push(line); if (LOG.length > LOG_MAX) LOG.splice(0, LOG.length - LOG_MAX);
-  const pre = $('#termout'), stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 40;
-  const div = document.createElement('div'); div.className = logClass(line); div.textContent = line; pre.appendChild(div);
-  while (pre.childNodes.length > LOG_MAX) pre.removeChild(pre.firstChild);
-  if (stick) pre.scrollTop = pre.scrollHeight;
-  if (S.busy && line.startsWith('▸')) $('#sub').textContent = 'Đang quét: ' + line.slice(2);
+  const l = String(line ?? '').trim();
+  if (!S.busy || !l) return;
+  if (l.startsWith('▸')) S.step = l.slice(1).trim();
+  const text = S.step && !l.startsWith('▸') ? S.step + '  ·  ' + l : (S.step || l);
+  $('#scanstep').textContent = text;
+  const b = $('#blankstep'); if (b) b.textContent = text;
 };
 window.scanStarted = first => {
-  S.busy = true; setBusy(true); setTerm(true);
-  $('#sub').textContent = first ? 'Chưa có report — đang quét lần đầu toàn máy (1–5 phút). Tiến độ ở Terminal log bên dưới.' : 'Đang quét lại…';
+  S.loading = false; S.busy = true; S.scanning = true; S.step = ''; S.error = '';
+  $('#scantitle').textContent = first ? 'Đang quét lần đầu toàn máy (thường 1–5 phút)…' : 'Đang quét lại — report hiện tại vẫn xem được';
+  $('#scanstep').textContent = ''; setBusy(true); renderBlank();
 };
+/// Chưa có report: trạng thái trống / đang quét lần đầu / quét lỗi.
+function renderBlank() {
+  const b = $('#blank');
+  b.hidden = !!S.data;
+  if (S.data) return;
+  $('#ov').hidden = true; $('#fv').hidden = true;
+  if (S.loading && !S.busy && !S.error) b.innerHTML = '<div class="ico"><span class="busy" style="width:40px;height:40px;border-width:4px;margin:0"></span></div><h2>Đang mở report…</h2>';
+  else if (S.busy) b.innerHTML = `<div class="ico"><span class="busy" style="width:40px;height:40px;border-width:4px;margin:0"></span></div>
+    <h2>Đang quét máy…</h2><p>Lần quét đầu đi qua ứng dụng, cache, log, repo git và rác (thường 1–5 phút). Kết quả hiện ngay khi xong — chưa xoá gì cho tới khi bạn xác nhận.</p>
+    <p class="num" id="blankstep" style="font-size:12px;color:var(--faint)">${esc(S.step)}</p>${inApp() ? '<button class="btn" data-term>Xem tiến độ ở Terminal</button>' : ''}`;
+  else b.innerHTML = `<div class="ico">${ICON.scan}</div><h2>${S.error ? 'Quét lỗi' : 'Chưa có report'}</h2>
+    <p>${S.error ? esc(S.error) + ' — chi tiết ở Terminal.' : inApp() ? 'Quét để kiểm kê ứng dụng, cache, log, repo và rác của máy. Mặc định chỉ xem — không xoá gì cho tới khi bạn xác nhận.' : 'Mở bằng app (swift run MacCleaner) hoặc mở file reports/report-*.html.'}</p>
+    ${inApp() ? `<div class="actions" style="justify-content:center"><button class="btn primary" id="rescan2">${S.error ? 'Quét lại' : 'Quét ngay'}</button>${S.error ? '<button class="btn" data-term>Mở Terminal</button>' : ''}</div>` : ''}`;
+}
 
-function renderKpis() {
+function renderHero() {
   const it = S.data.items.filter(i => !S.cat || i.category === S.cat), d = S.data.disk;
   const safe = sum(it.filter(i => i.safety === 'safe'), i => i.size), review = sum(it.filter(i => i.safety === 'review'), i => i.size);
-  const pct = v => (v / d.total * 100).toFixed(2) + '%';
+  const pct = v => Math.max(0, v / Math.max(d.total, 1) * 100).toFixed(2) + '%';
+  const p = proposal(), n = p.safe.length + p.review.length;
+  $('#hero').innerHTML = `<div><div class="cap">Có thể giải phóng${S.cat ? ' trong ' + esc(catOf(S.cat).label) : ''}</div>
+      <div class="big">${fSize(safe + review)}<small>${fSize(safe)} an toàn · ${fSize(review)} cân nhắc</small></div></div>
+    <div class="side">${n ? `<button class="btn primary" data-prop>Xem đề xuất xoá<span class="badge">${p.safe.length}</span></button>`
+        : '<span class="done">✓ Không còn mục nào để đề xuất</span>'}
+      <div class="sub">Đĩa trống <b class="num">${fSize(d.free)}</b> / ${fSize(d.total)} · đã dùng ${(d.used / Math.max(d.total, 1) * 100).toFixed(0)}%</div></div>
+    <div class="disk"><div class="meter" style="background:var(--track)"><i style="width:${pct(d.used - safe - review)};background:var(--faint)"></i><i style="width:${pct(safe)};background:var(--green)"></i><i style="width:${pct(review)};background:var(--amber)"></i></div>
+      <div class="legend"><span><i style="background:var(--faint)"></i>đã dùng (khác)</span><span><i style="background:var(--green)"></i>dọn an toàn</span><span><i style="background:var(--amber)"></i>cân nhắc</span><span><i style="background:var(--track);box-shadow:inset 0 0 0 1px var(--line2)"></i>trống</span></div></div>`;
+}
+
+function renderKpis() {
+  const it = S.data.items.filter(i => !S.cat || i.category === S.cat);
+  const L = { safe: it.filter(i => i.safety === 'safe'), review: it.filter(i => i.safety === 'review'), info: it.filter(i => !cleanable(i)) };
+  const all = Math.max(sum(it, i => i.size), 1);
   const k = [
-    { f: 'all', label: 'Đĩa trống', color: '#60a5fa', v: fSize(d.free), vs: `${(d.used / d.total * 100).toFixed(0)}% đã dùng của ${fSize(d.total)}`,
-      meter: `<i style="width:${pct(d.used - safe - review)};background:var(--faint)"></i><i style="width:${pct(safe)};background:var(--green)"></i><i style="width:${pct(review)};background:var(--amber)"></i>` },
-    { f: 'safe', label: 'Dọn an toàn', color: '#4ade80', v: fSize(safe), vs: `${it.filter(i => i.safety === 'safe').length} mục · cache, log, backup cũ`,
-      meter: `<i style="width:${Math.min(100, safe / Math.max(d.free, 1) * 100)}%;background:var(--green)"></i>` },
-    { f: 'review', label: 'Cân nhắc', color: '#fbbf24', v: fSize(review), vs: `${it.filter(i => i.safety === 'review').length} mục · build artifact, installer…`,
-      meter: `<i style="width:${Math.min(100, review / Math.max(d.free, 1) * 100)}%;background:var(--amber)"></i>` },
-    { f: 'info', label: 'Đã kiểm kê', color: '#818cf8', v: it.length.toLocaleString('vi-VN'), vs: CATS.map(c => `${S.data.items.filter(i => i.category === c.key).length} ${c.label.toLowerCase()}`).slice(0, 4).join(' · '),
-      meter: CATS.map(c => `<i style="width:${S.data.items.filter(i => i.category === c.key).length / S.data.items.length * 100}%;background:${c.color}"></i>`).join('') },
+    { f: 'safe', label: 'Dọn an toàn', color: 'var(--green)', v: fSize(sum(L.safe, i => i.size)), vs: `${L.safe.length} mục · cache, log, backup cũ — tự tạo lại` },
+    { f: 'review', label: 'Cân nhắc', color: 'var(--amber)', v: fSize(sum(L.review, i => i.size)), vs: `${L.review.length} mục · build artifact, installer, sót lại của app…` },
+    { f: 'info', label: 'Kiểm kê & bảo vệ', color: 'var(--blue)', v: L.info.length.toLocaleString('vi-VN') + ' mục', vs: `${fSize(sum(L.info, i => i.size))} · app, repo, plugin — chỉ xoá khi chọn đích danh` },
   ];
-  $('#kpis').innerHTML = k.map(x => `<div class="card kpi ${S.f === x.f && x.f !== 'all' ? 'on' : ''}" data-kf="${x.f}" role="button" tabindex="0" title="Xem các mục: ${x.label.toLowerCase()}"><div class="k"><span class="dot" style="background:${x.color}"></span>${x.label}</div>
-    <div class="v">${x.v}</div><div class="vs">${esc(x.vs)}</div><div class="meter">${x.meter}</div></div>`).join('');
+  $('#kpis').innerHTML = k.map(x => `<div class="card kpi ${S.f === x.f ? 'on' : ''}" data-kf="${x.f}" role="button" tabindex="0" title="Lọc bảng chi tiết: ${x.label.toLowerCase()}"><div class="k"><span class="dot" style="background:${x.color}"></span>${x.label}</div>
+    <div class="v">${x.v}</div><div class="vs">${esc(x.vs)}</div><div class="meter"><i style="width:${(sum(L[x.f], i => i.size) / all * 100).toFixed(2)}%;background:${x.color}"></i></div></div>`).join('');
 }
 
 function renderBars() {
@@ -870,10 +968,11 @@ function renderSel() {
 }
 
 function draw() {
-  if (!S.data) return;
-  $('#ov').hidden = !!S.feat; $('#fv').hidden = !S.feat;
+  if (!S.data) return renderBlank();
+  $('#blank').hidden = true; $('#ov').hidden = !!S.feat; $('#fv').hidden = !S.feat;
+  $('#scanbar').hidden = !(S.busy && S.scanning);
   if (S.feat) { renderSide(); renderHeader(); renderFeat(); return renderSel(); }
-  renderSide(); renderHeader(); renderKpis(); renderBars(); renderTop(); renderTable(); renderOwners(); renderRepos(); renderPlugins(); renderSel();
+  renderSide(); renderHeader(); renderHero(); renderKpis(); renderBars(); renderTop(); renderTable(); renderOwners(); renderRepos(); renderPlugins(); renderSel();
 }
 /// Sau khi đổi bộ lọc từ chỗ khác trên trang: cuộn tới bảng để thấy kết quả ngay.
 /// Cuộn đồng bộ (không rAF / smooth): WKWebView có thể hoãn cả hai khi cửa sổ không được vẽ lại.
@@ -914,9 +1013,9 @@ function openItem(id) {
     </dl>`);
 }
 
-function cleanCmd(ids, force) {
+function cleanCmd(ids, force, mode = 'trash') {
   const root = (S.data.reportPath || '').replace(/\/reports\/[^/]+$/, '');
-  return `python3 ${JSON.stringify(root + '/maccleaner.py')} clean --report ${JSON.stringify(S.data.reportPath)} --ids ${ids.join(',')}${force ? ' --force' : ''} --yes`;
+  return `python3 ${JSON.stringify(root + '/maccleaner.py')} clean --report ${JSON.stringify(S.data.reportPath)} --ids ${ids.join(',')}${force ? ' --force' : ''}${mode === 'permanent' ? ' --mode permanent' : ''} --yes`;
 }
 function preview(ids) {
   const items = ids.map(id => byId[id]).filter(i => i && deletable(i));
@@ -935,7 +1034,7 @@ function runClean(ids, force) {
   if (!inApp()) { copy(cleanCmd(ids, force)); toast('Đã copy lệnh — dán vào Terminal để xoá'); return closeDrawer(); }
   S.lastIds = ids; S.lastForce = force; S.busy = true; setBusy(true);
   post('clean:' + JSON.stringify({ ids, yes: true, force }));
-  drawer('<h2><span class="busy"></span>Đang xoá…</h2><div class="sub">Tiến độ ở Terminal log.</div>');
+  drawer('<h2><span class="busy"></span>Đang xoá…</h2><div class="sub">Tiến độ ở Terminal.</div>');
 }
 
 /// Hộp thoại xoá MỘT mục. Mục không phải "an toàn" phải tick xác nhận; mục kiểm kê/bảo vệ có cảnh báo theo loại.
@@ -963,7 +1062,7 @@ function confirmOne(id) {
       <button class="btn" data-reveal="${esc(i.path)}">${inApp() ? 'Hiện trong Finder' : 'Copy đường dẫn'}</button>
       <button class="btn" id="close2">Huỷ</button>
     </div>
-    <div class="sub">Mục được kiểm lại ngay trước khi xoá (còn tồn tại, không thuộc vùng macOS khoá). Log ghi ở Terminal log.</div>`);
+    <div class="sub">Mục được kiểm lại ngay trước khi xoá (còn tồn tại, không thuộc vùng macOS khoá). Tiến độ ở Terminal.</div>`);
 }
 
 /// Hộp thoại xoá NHIỀU mục (Xoá toàn bộ, mục đã chọn, cả nhóm). Mặc định chỉ gồm mục dọn được; mục kiểm kê/bảo vệ
@@ -994,8 +1093,95 @@ function drawBulk() {
     <div class="sec">Danh sách</div>${items.slice(0, SHOW).map(i => `<div class="res"><span class="st ${i.safety === 'safe' ? 'ok' : forced(i) ? 'error' : 'dry-run'}">${fSize(i.size)}</span>${esc(i.path)}</div>`).join('')}${items.length > SHOW ? `<div class="res" style="color:var(--faint)">… và ${items.length - SHOW} mục nữa</div>` : ''}`);
 }
 
+// ---------- Popup "Đề xuất xoá" ----------
+// Do mac-cleaner giữ (cùng theme với board). Quét xong tự bật; host chỉ nhận message clean:{ids, mode, yes} và chạy
+// `maccleaner.py clean --ids … --mode trash|permanent --yes --json` (mọi mục được kiểm lại trong Python).
+const PR = { open: false, sel: new Set(), mode: 'trash', phase: 'choose', ack: false, res: null, error: '' };
+const PROP_SHOW = 150;  // mỗi nhóm hiện tối đa ngần này dòng; tick cả nhóm vẫn chọn đủ
+/// Mục đề xuất: mục quét gốc dọn được, chuyển-vào-Thùng-rác. safe → Khuyến nghị (tick sẵn), review → Cân nhắc (không tick).
+function proposal() {
+  const ok = (S.data?.items || []).filter(i => !i.feature && i.action === 'trash' && (i.safety === 'safe' || i.safety === 'review')
+    && i.kind !== 'trash' && !locked(i));
+  return { safe: ok.filter(i => i.safety === 'safe').sort(bySize), review: ok.filter(i => i.safety === 'review').sort(bySize) };
+}
+window.openProposal = (auto = false) => {
+  if (!S.data || S.busy) return;
+  const p = proposal();
+  if (auto && !p.safe.length && !p.review.length) return;
+  Object.assign(PR, { open: true, phase: 'choose', mode: 'trash', ack: false, res: null, error: '', sel: new Set(p.safe.map(i => i.id)) });
+  closeDrawer(); renderProp(true);
+};
+function closeProp() {
+  if (PR.phase === 'run') return;
+  PR.open = false; $('#prop').classList.remove('on'); $('#pveil').classList.remove('on');
+}
+const propSel = () => [...PR.sel].map(id => byId[id]).filter(Boolean);
+function propGroups(list) {
+  const g = {};
+  for (const i of list) (g[i.category] ||= []).push(i);
+  return Object.entries(g).map(([c, l]) => ({ c, l, size: sum(l, i => i.size) })).sort((a, b) => b.size - a.size || a.c.localeCompare(b.c));
+}
+function propTier(tier, title, color, list, note) {
+  if (!list.length) return '';
+  return `<div class="ptier"><div class="h"><span class="dot" style="background:${color}"></span>${title}<span>${list.length} mục · ${fSize(sum(list, i => i.size))} · ${note}</span></div>`
+    + propGroups(list).map(g => {
+      const n = g.l.filter(i => PR.sel.has(i.id)).length;
+      return `<div class="pgrp"><label><input type="checkbox" data-pg="${tier}|${esc(g.c)}" ${n === g.l.length ? 'checked' : ''} ${n && n < g.l.length ? 'data-indet' : ''}>
+        <span class="dot" style="background:${catOf(g.c).color}"></span><span class="fill">${esc(catOf(g.c).label)}</span><span class="num">${n}/${g.l.length} · ${fSize(g.size)}</span></label>`
+        + g.l.slice(0, PROP_SHOW).map(i => `<label class="prow" title="${esc(i.note || i.path)}"><input type="checkbox" data-px="${i.id}" ${PR.sel.has(i.id) ? 'checked' : ''}>
+          <div class="c"><div class="n">${esc(i.name)} <span style="color:var(--faint)">· ${esc(kindLabel(i.kind))}</span></div><div class="m">${esc(shortPath(i.path))}</div></div><span class="r">${fSize(i.size)}</span></label>`).join('')
+        + (g.l.length > PROP_SHOW ? `<div class="pmore">… và ${g.l.length - PROP_SHOW} mục nhỏ hơn — chọn/bỏ theo cả nhóm ở dòng tiêu đề</div>` : '') + '</div>';
+    }).join('') + '</div>';
+}
+function renderProp(first = false) {
+  const box = $('#prop'), sc = first ? 0 : box.querySelector('.pb')?.scrollTop || 0;
+  const p = proposal(), sel = propSel(), size = sum(sel, i => i.size), perm = PR.mode === 'permanent';
+  const head = (t, sub) => `<div class="ph"><div style="flex:1"><h2 id="proptitle">${t}</h2><div class="sub">${sub}</div></div>${PR.phase === 'run' ? '' : '<button class="icon-btn" id="pclose" aria-label="Đóng">✕</button>'}</div>`;
+  let h;
+  if (PR.phase === 'done') {
+    const r = PR.res, ok = r.results.filter(x => x.status === 'ok');
+    h = head(`${perm ? 'Đã xoá vĩnh viễn' : 'Đã chuyển vào Thùng rác'} ${ok.length}/${r.results.length} mục · ${fSize(r.freed)}`,
+      perm ? `Đĩa trống ${fSize(r.freeBefore)} → ${fSize(r.freeAfter)}${r.log ? ' · log ' + esc(r.log) : ''}`
+        : `Khôi phục được từ Thùng rác. Đổ Thùng rác để lấy lại dung lượng thật${r.log ? ' · log ' + esc(r.log) : ''}`)
+      + `<div class="pb">${r.results.map(x => `<div class="res"><span class="st ${x.status}">${x.status}</span>${esc(x.path)}${x.reason ? ` <span style="color:var(--faint)">— ${esc(x.reason)}</span>` : ''}</div>`).join('') || '<div class="empty">Không có mục nào</div>'}</div>
+      <div class="pf"><div class="row"><span class="fill"></span><button class="btn primary" id="pclose2">Đóng</button></div></div>`;
+  } else {
+    const empty = !p.safe.length && !p.review.length;
+    h = head('Đề xuất xoá', empty ? 'Không còn mục nào để đề xuất — máy đã gọn.'
+        : `${p.safe.length} mục khuyến nghị (an toàn) · ${p.review.length} mục cần cân nhắc. Chưa có gì bị xoá cho tới khi bạn xác nhận.`)
+      + `<div class="pb" ${PR.phase === 'choose' ? '' : 'style="pointer-events:none;opacity:.55"'}>
+          ${propTier('safe', 'Khuyến nghị xoá', 'var(--green)', p.safe, 'tự tạo lại, chọn sẵn')}
+          ${propTier('review', 'Cân nhắc', 'var(--amber)', p.review, 'mặc định không chọn — xem kỹ trước khi tick')}
+          ${empty ? '<div class="empty">Không có mục dọn được trong report này.</div>' : ''}
+          ${PR.error ? `<div class="warn hot">${esc(PR.error)}</div>` : ''}</div>`;
+    const total = `<span class="total">Đã chọn <b>${sel.length}</b> mục · <b>${fSize(size)}</b></span>`;
+    if (PR.phase === 'run') h += `<div class="pf"><div class="row"><span class="busy"></span><span>${perm ? 'Đang xoá vĩnh viễn' : 'Đang chuyển vào Thùng rác'} ${sel.length} mục… tiến độ ở Terminal</span><span class="fill"></span>${total}</div></div>`;
+    else if (PR.phase === 'confirm') h += `<div class="pf"><div class="pconfirm"><b>Xoá vĩnh viễn ${sel.length} mục · ${fSize(size)}?</b> Không hoàn tác được — mục không còn trong Thùng rác để khôi phục.
+        Chỉ mục trong thư mục home được xoá hẳn; mục ngoài home bị bỏ qua (dùng Thùng rác cho chúng).
+        <label class="ack"><input type="checkbox" id="pack" ${PR.ack ? 'checked' : ''}> Tôi hiểu, xoá vĩnh viễn các mục đã chọn</label></div>
+        <div class="row"><span class="fill"></span><button class="btn" id="pback">Quay lại</button><button class="btn danger" id="pconfirm" ${PR.ack ? '' : 'disabled'}>${inApp() ? 'Xoá vĩnh viễn' : 'Copy lệnh xoá vĩnh viễn'}</button></div></div>`;
+    else h += `<div class="pf"><div class="row"><button class="btn" id="pall" ${empty ? 'disabled' : ''}>Chọn tất cả</button><button class="btn" id="pnone" ${sel.length ? '' : 'disabled'}>Bỏ chọn</button><span class="fill"></span>${total}</div>
+        <div class="row"><div class="seg mode"><button data-pm="trash" class="${perm ? '' : 'on'}">Thùng rác</button><button data-pm="permanent" class="${perm ? 'on perm' : ''}">Xoá vĩnh viễn</button></div>
+          <span class="hint ${perm ? 'hot' : ''}">${perm ? 'Không hoàn tác được — sẽ hỏi xác nhận lần nữa.' : 'Khôi phục được từ Thùng rác.'}</span><span class="fill"></span>
+          <button class="btn" id="pcancel">Huỷ</button><button class="btn ${perm ? 'danger' : 'primary'}" id="pgo" ${sel.length ? '' : 'disabled'}>${!inApp() ? 'Copy lệnh xoá' : perm ? 'Xoá vĩnh viễn…' : 'Chuyển vào Thùng rác'}</button></div></div>`;
+  }
+  box.innerHTML = h;
+  box.querySelectorAll('[data-indet]').forEach(e => { e.indeterminate = true; });
+  const pb = box.querySelector('.pb'); if (pb) pb.scrollTop = sc;
+  box.classList.add('on'); $('#pveil').classList.add('on');
+}
+function propRun() {
+  const ids = propSel().map(i => i.id);
+  if (!ids.length) return;
+  if (!inApp()) { copy(cleanCmd(ids, false, PR.mode)); toast('Đã copy lệnh — dán vào Terminal để xoá'); return closeProp(); }
+  PR.phase = 'run'; PR.error = ''; S.busy = true; S.lastIds = ids; S.lastForce = false; setBusy(true);
+  post('clean:' + JSON.stringify({ ids, mode: PR.mode, yes: true }));
+  renderProp();
+}
+
 window.cleaned = res => {
   S.busy = false; setBusy(false);
+  const inProp = PR.open && PR.phase === 'run';
   const ok = res.results.filter(r => r.status === 'ok' || r.status === 'dry-run'), dry = res.results.some(r => r.status === 'dry-run');
   if (!dry) {
     const done = new Set(res.results.filter(r => r.status === 'ok').map(r => r.id));
@@ -1004,8 +1190,9 @@ window.cleaned = res => {
     for (const i of S.data.items) if (done.has(i.id)) i.size = 0;  // Thùng rác đã đổ: còn mục, dung lượng 0
     for (const f of Object.values(S.data.features || {})) if (Array.isArray(f?.items)) f.items = f.items.filter(i => !done.has(i.id));
     for (const id of done) if (byId[id]?.kind !== 'trash' || byId[id]?.feature) delete byId[id];
-    S.data.disk.free = res.freeAfter;
+    if (res.freeAfter != null) S.data.disk.free = res.freeAfter;
   }
+  if (inProp) { PR.phase = 'done'; PR.res = res; draw(); return renderProp(); }
   drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">${dry ? 'Xem trước' : 'Kết quả xoá'}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
     <h2>${dry ? 'Sẽ xoá' : 'Đã xoá'} ${ok.length}/${res.results.length} mục · ${fSize(res.freed)}</h2>
     <div class="sub">${dry ? 'Chưa thay đổi gì.' : `Đĩa trống ${fSize(res.freeBefore)} → ${fSize(res.freeAfter)}${res.log ? ' · log ' + esc(res.log) : ''}. Đổ Thùng rác để lấy lại dung lượng thật.`}</div>
@@ -1014,8 +1201,9 @@ window.cleaned = res => {
   draw();
 };
 window.scanFailed = msg => {
-  S.busy = false; setBusy(false); setTerm(true);
-  if (S.data) draw(); else $('#sub').textContent = 'Quét lỗi — chi tiết ở Terminal log bên dưới. Bấm Quét lại để thử lại.';
+  S.busy = false; S.scanning = false; S.loading = false; setBusy(false);
+  if (PR.open && PR.phase === 'run') { PR.phase = 'choose'; PR.error = 'Lỗi: ' + msg; renderProp(); }
+  if (S.data) draw(); else { S.error = msg; $('#sub').textContent = 'Quét lỗi — chi tiết ở Terminal. Bấm Quét lại để thử lại.'; renderBlank(); }
   toast('Lỗi: ' + msg);
 };
 
@@ -1030,27 +1218,27 @@ document.addEventListener('click', e => {
   if (e.target.matches('input[data-x]')) { const id = e.target.dataset.x; e.target.checked ? S.sel.add(id) : S.sel.delete(id); renderSel(); renderTable(); return; }
   if (e.target.id === 'pageall') { for (const i of view().sort(bySize).slice(0, S.limit).filter(deletable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderTable(); return; }
   if (e.target.id === 'fpageall') { for (const i of featView().slice(0, S.flimit).filter(deletable)) e.target.checked ? S.sel.add(i.id) : S.sel.delete(i.id); renderSel(); renderFeatRows(); return; }
-  if (e.target.matches('#ackone, #ackbulk, #withextra, #fq')) return;  // xử lý ở 'change' / 'input'
-  const t = e.target.closest('[data-feat],[data-fk],[data-cmd],[data-term],#fselall,#fshowmore,[data-tog],[data-ck],[data-kf],[data-goto],[data-unf],[data-delowner],[data-delplug],[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#gobulk,#prevbulk,#delall,#close,#close2,#veil,#rescan,#theme,#logbtn,#termopen,#termcopy,#termclear,#termclose,#showmore,#selall,#selclear,#preview,#doclean,#goconfirm');
+  if (e.target.matches('#ackone, #ackbulk, #withextra, #fq, #pack, input[data-px], input[data-pg]')) return;  // xử lý ở 'change' / 'input'
+  const t = e.target.closest('[data-feat],[data-fk],[data-cmd],[data-term],[data-prop],[data-pm],#fselall,#fshowmore,[data-tog],[data-ck],[data-kf],[data-goto],[data-unf],[data-delowner],[data-delplug],[data-c],[data-f],[data-k],[data-i],[data-q],[data-pq],[data-copy],[data-reveal],[data-toggle],[data-del],[data-info],[data-prev],#goone,#gobulk,#prevbulk,#delall,#close,#close2,#veil,#rescan,#rescan2,#theme,#termbtn,#propbtn,#pveil,#pclose,#pclose2,#pcancel,#pall,#pnone,#pgo,#pback,#pconfirm,#showmore,#selall,#selclear,#preview,#doclean,#goconfirm');
   if (!t) return;
   const id = t.id, d = t.dataset;
+  if (id === 'pveil' || id === 'pclose' || id === 'pclose2' || id === 'pcancel') return closeProp();
+  if (id === 'pall') { for (const i of [...proposal().safe, ...proposal().review]) PR.sel.add(i.id); return renderProp(); }
+  if (id === 'pnone') { PR.sel.clear(); return renderProp(); }
+  if (d.pm != null) { PR.mode = d.pm; return renderProp(); }
+  if (id === 'pgo') { if (PR.mode === 'permanent') { PR.phase = 'confirm'; PR.ack = false; return renderProp(); } return propRun(); }
+  if (id === 'pback') { PR.phase = 'choose'; return renderProp(); }
+  if (id === 'pconfirm') return PR.ack ? propRun() : undefined;
+  if (id === 'propbtn' || d.prop != null) return window.openProposal();
   if (id === 'close' || id === 'close2' || id === 'veil') return closeDrawer();
   if (id === 'theme') { const n = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = n; store.set('theme', n); return; }
-  if (id === 'rescan') { if (inApp()) { post('scan'); toast('Đang quét, mất vài phút — xem Terminal log'); } else toast('Chạy: python3 maccleaner.py scan'); return; }
-  if (id === 'logbtn') return setTerm(!$('#term').classList.contains('on'));
-  if (id === 'termclose') return setTerm(false);
-  if (id === 'termclear') { LOG.length = 0; $('#termout').textContent = ''; return; }
-  if (id === 'termopen' || d.term != null) {
-    if (inApp()) { post('terminal'); toast('Đang mở Terminal…'); }
-    else { copy('tail -n 200 -F "$(ls -t logs/*.log | head -1)"'); toast('Đã copy lệnh xem log — dán vào Terminal ở thư mục mac-cleaner'); }
-    return;
-  }
+  if (id === 'rescan' || id === 'rescan2') { if (inApp()) { post('scan'); toast('Đang quét, mất vài phút — tiến độ ở Terminal'); } else toast('Chạy: python3 maccleaner.py scan'); return; }
+  if (id === 'termbtn' || d.term != null) return openTerminal();
   if (d.feat != null) return window.showFeature(d.feat);
   if (d.fk != null) { S.fkind = S.fkind === d.fk ? null : d.fk; S.flimit = PAGE; renderFeatRows(); return $('#ftable')?.scrollIntoView(); }
   if (d.cmd != null) { copy(d.cmd); toast('Đã copy lệnh — dán vào Terminal (nút Mở Terminal)'); return; }
   if (id === 'fselall') { for (const i of featView().filter(i => deletable(i) && i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderFeatRows(); }
   if (id === 'fshowmore') { S.flimit += PAGE; return renderFeatRows(); }
-  if (id === 'termcopy') { copy(LOG.join('\n')); toast('Đã copy log'); return; }
   if (id === 'showmore') { S.limit += PAGE; return renderTable(); }
   if (id === 'selall') { for (const i of view().filter(i => i.safety === 'safe')) S.sel.add(i.id); renderSel(); return renderTable(); }
   if (id === 'selclear') { S.sel.clear(); renderSel(); return renderTable(); }
@@ -1097,31 +1285,84 @@ document.addEventListener('click', e => {
   if (d.pq != null) { goTo('plugins', null, d.pq); draw(); return showTable(); }
 });
 document.addEventListener('change', e => {
+  if (e.target.matches('input[data-px]')) { const x = e.target.dataset.px; e.target.checked ? PR.sel.add(x) : PR.sel.delete(x); return renderProp(); }
+  if (e.target.matches('input[data-pg]')) {
+    const [tier, cat] = e.target.dataset.pg.split('|');
+    for (const i of proposal()[tier].filter(i => i.category === cat)) e.target.checked ? PR.sel.add(i.id) : PR.sel.delete(i.id);
+    return renderProp();
+  }
+  if (e.target.id === 'pack') { PR.ack = e.target.checked; $('#pconfirm').disabled = !PR.ack; return; }
   if (e.target.id === 'ackone') $('#goone').disabled = !e.target.checked;
   if (e.target.id === 'ackbulk') { S.bulk.ack = e.target.checked; $('#gobulk').disabled = !e.target.checked; }
   if (e.target.id === 'withextra') { S.bulk.withExtra = e.target.checked; S.bulk.ack = false; drawBulk(); }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeDrawer();
+  if (e.key === 'Escape') { if (PR.open) closeProp(); else closeDrawer(); }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.kpi')) { e.preventDefault(); e.target.click(); }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); setTerm(!$('#term').classList.contains('on')); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); openTerminal(); }
 });
-if (inApp() && store.get('term') === '1') setTerm(true);
 $('#q').addEventListener('input', e => { S.q = e.target.value; S.limit = PAGE; renderTable(); });
 document.addEventListener('input', e => { if (e.target.id === 'fq') { S.fq = e.target.value; S.flimit = PAGE; renderFeatRows(); } });
-document.documentElement.dataset.theme = store.get('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+// ---------- Theme ----------
+// Không có host: theme mặc định của mac-cleaner (sáng/tối theo hệ thống hoặc nút đổi giao diện).
+// Host (Ciel Monitor) gọi window.applyTheme({bg, surface, text, muted, accent, danger, ok, warn, …, dark}) lúc nạp và
+// mỗi khi người dùng đổi bảng màu / màu nhấn; applyTheme(null) trả về theme mặc định.
+const localTheme = () => store.get('theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+function rgb(h) {
+  const m = /^#?([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(String(h || '').trim());
+  if (!m) return null;
+  const v = parseInt(m[1], 16);
+  return [v >> 16 & 255, v >> 8 & 255, v & 255];
+}
+const hex = c => '#' + c.map(x => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, '0')).join('');
+const mix = (a, b, t) => { const x = rgb(a), y = rgb(b); return x && y ? hex(x.map((v, i) => v + (y[i] - v) * t)) : a; };
+const rgba = (h, a) => { const c = rgb(h); return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})` : ''; };
+const luma = h => { const c = rgb(h) || [0, 0, 0]; return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255; };
+const HOST_VARS = ['--bg', '--side', '--card', '--card2', '--line', '--line2', '--text', '--dim', '--faint', '--pill', '--hover', '--track',
+  '--green', '--red', '--amber', '--blue', '--accent', '--on-accent', '--green-soft', '--red-soft', '--red-line', '--amber-soft',
+  '--blue-soft', '--accent-soft', '--shadow', '--sans', '--mono'];
+window.applyTheme = t => {
+  const root = document.documentElement;
+  HOST_VARS.forEach(v => root.style.removeProperty(v));
+  if (!t || !rgb(t.bg) || !rgb(t.text)) {
+    delete root.dataset.host; root.dataset.theme = localTheme(); document.body.style.zoom = ''; $('#theme').hidden = false; return;
+  }
+  const bg = t.bg, sf = rgb(t.surface) ? t.surface : mix(bg, t.text, .04), tx = t.text, mu = rgb(t.muted) ? t.muted : mix(tx, bg, .45);
+  const accent = rgb(t.accent) ? t.accent : '#4ade80', ok = rgb(t.ok) ? t.ok : '#4ade80', danger = rgb(t.danger) ? t.danger : '#f87171';
+  const warn = rgb(t.warn) ? t.warn : '#fbbf24', info = rgb(t.info) ? t.info : accent;
+  const v = {
+    '--bg': bg, '--card': sf, '--card2': rgb(t.surface2) ? t.surface2 : mix(sf, tx, .035), '--side': rgb(t.side) ? t.side : mix(bg, sf, .5),
+    '--line': rgb(t.line) ? t.line : mix(sf, tx, .1), '--line2': rgb(t.line2) ? t.line2 : mix(sf, tx, .16),
+    '--text': tx, '--dim': mu, '--faint': rgb(t.faint) ? t.faint : mix(mu, sf, .35),
+    '--pill': mix(sf, tx, .06), '--hover': mix(sf, tx, .045), '--track': mix(sf, tx, .08),
+    '--green': ok, '--red': danger, '--amber': warn, '--blue': info, '--accent': accent,
+    '--on-accent': rgb(t.onAccent) ? t.onAccent : luma(accent) > .55 ? '#0b0b0f' : '#ffffff',
+    '--green-soft': rgba(ok, .12), '--red-soft': rgba(danger, .1), '--red-line': rgba(danger, .45), '--amber-soft': rgba(warn, .1),
+    '--blue-soft': rgba(info, .1), '--accent-soft': rgba(accent, .12), '--shadow': t.dark ? 'rgba(0, 0, 0, .5)' : 'rgba(20, 20, 30, .18)',
+  };
+  if (t.font) v['--sans'] = t.font;
+  if (t.mono) v['--mono'] = t.mono;
+  for (const [k, x] of Object.entries(v)) root.style.setProperty(k, x);
+  root.dataset.theme = t.dark ? 'dark' : 'light'; root.dataset.host = '1';
+  document.body.style.zoom = t.scale && t.scale !== 1 ? String(t.scale) : '';
+  $('#theme').hidden = true;  // giao diện do host quyết
+};
+document.documentElement.dataset.theme = localTheme();
 
 // Entry point: app gọi render(data) sau mỗi lần quét; report tĩnh nhúng sẵn window.EMBEDDED.
 window.render = data => {
-  S.data = data; S.busy = false; setBusy(false);
+  const afterScan = S.scanning;
+  S.data = data; S.busy = false; S.scanning = false; S.error = ''; setBusy(false);
   for (const k in byId) delete byId[k];
   for (const i of data.items) byId[i.id] = i;
   for (const f of Object.values(data.features || {})) for (const i of f?.items || []) if (i?.id && !byId[i.id]) byId[i.id] = i;
   for (const id of [...S.sel]) if (!byId[id]) S.sel.delete(id);
   draw();
+  if (afterScan) window.openProposal(true);  // quét xong: tự bật popup đề xuất (chỉ khi có mục)
+  else if (PR.open && PR.phase !== 'run') renderProp();
 };
 if (window.EMBEDDED) window.render(window.EMBEDDED);
-else if (!inApp()) $('#sub').textContent = 'Mở bằng app (swift run MacCleaner) hoặc mở file reports/report-*.html.';
+else { if (!inApp()) $('#sub').textContent = 'Mở bằng app (swift run MacCleaner) hoặc mở file reports/report-*.html.'; renderBlank(); setBusy(false); }
 </script>
 </body>
 </html>
