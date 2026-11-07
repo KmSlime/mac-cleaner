@@ -53,7 +53,7 @@ def entry(feature, path, *, name="", size=None, safety="inventory", delete_mode=
         raise ValueError(f"path phải là đường dẫn tuyệt đối: {path!r}")
     guard = None
     if delete_mode != "list-only":
-        guard = S.hard_deny(path) or (S.is_protected(path) and "được bảo vệ") or S.guard_reason(path)
+        guard = S.hard_deny(path) or (S.is_protected(path, extra.get("kind", "")) and "được bảo vệ") or S.guard_reason(path)
     if safety == "protected" or guard:
         safety, delete_mode = "protected", "list-only"
         if guard:

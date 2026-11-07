@@ -104,7 +104,8 @@ def scan_apps():
             items.append(item("applications", "app", info.get("CFBundleDisplayName") or info.get("CFBundleName") or Path(app).stem,
                               app, owner=src, version=str(info.get("CFBundleShortVersionString", "")),
                               bundle_id=info.get("CFBundleIdentifier", ""),
-                              note="gỡ sạch bằng `mo uninstall`" if src != "macOS" else ""))
+                              note=f"gỡ sạch bằng `maccleaner.py uninstall {info.get('CFBundleIdentifier') or Path(app).stem}`"
+                              if src != "macOS" else ""))
     return items
 
 

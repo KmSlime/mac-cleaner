@@ -35,6 +35,8 @@ SIP_OK = ("/usr/local/",)
 HOME_FOLDERS = {"Library", "Documents", "Desktop", "Downloads", "Applications", "Movies", "Music", "Pictures", "Public"}
 # Mục "sót lại" nằm trong thư mục Library thường được bảo vệ, nhưng vẫn dọn được (mức cân nhắc)
 LEFTOVER_LIBRARY = ("Application Support", "LaunchAgents")
+# Gỡ app chọn đích danh (`uninstall`, kind "app-uninstall"): dọn thêm dữ liệu của CHÍNH app đó ở các thư mục này.
+UNINSTALL_LIBRARY = LEFTOVER_LIBRARY + ("Saved Application State", "HTTPStorages", "WebKit", "Cookies")
 TRASH_BIN = "/usr/bin/trash"  # có từ macOS 15; máy cũ hơn dùng phương án chuyển thẳng vào ~/.Trash
 
 # ---- Rào an toàn học từ cách Mole (tw93/mole) vận hành — viết lại theo ý, không chép mã/danh sách (Mole là GPL-3.0) ----
@@ -115,7 +117,9 @@ def is_protected(path, kind=""):
     lib = os.path.join(HOME, "Library") + "/"
     if path.startswith(lib):
         top = path[len(lib):].split("/")[0]
-        return top not in LIBRARY_CLEANABLE and not (kind in ("app-leftover", "agent-leftover") and top in LEFTOVER_LIBRARY)
+        extra = (LEFTOVER_LIBRARY if kind in ("app-leftover", "agent-leftover") else
+                 UNINSTALL_LIBRARY if kind == "app-uninstall" else ())
+        return top not in LIBRARY_CLEANABLE and top not in extra
     if path.startswith(HOME + "/."):
         rel = path[len(HOME) + 1:]
         return not any(rel == c or rel.startswith(c + "/") for c in DOT_CLEANABLE)
