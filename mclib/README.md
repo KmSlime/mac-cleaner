@@ -59,7 +59,7 @@ phần mềm bảo mật — `safety.hard_deny`) hay vùng bảo vệ (`safety.i
 
 Report gốc **không đổi**: `items[]` vẫn dùng định dạng cũ (`safety: safe|review|info|protected`, `action`, `note`);
 `info` ở đó tương ứng `inventory`, `action: "trash"` ≈ `delete_mode: "trash"`, `action: null` ≈ `list-only`.
-Dashboard/app chưa hiển thị `features`. `clean` dọn cả mục của tính năng (`mclib/featclean.py`): chọn bằng `--ids`,
+Dashboard/app hiển thị `features` ở khu **Tính năng** (sidebar). `clean` dọn cả mục của tính năng (`mclib/featclean.py`): chọn bằng `--ids`,
 `--category <tính năng>` hoặc `--category <tính năng>:<kind>` (khoá `kind` qua `**extra`); mặc định chỉ `safe`,
 `--include-review` thêm `review`. `list-only`/`protected` **không bao giờ** bị dọn (kể cả `--force`); `permanent` cần
 thêm `--permanent`; `trash` đi qua `safety.validate` + Thùng rác + `logs/clean-*.jsonl`. Khai `owners=[bundle id |
