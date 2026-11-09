@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from mclib import registry, safety as S
+from mclib.features import startup
 
 NAME = "uninstall"
 KIND = "app-uninstall"
@@ -440,7 +441,12 @@ def plan(query, home=None, roots=None, run=S.run, run_err=run_all, spotlight=Tru
                                      f"{c['kind']} nằm trong app — đi cùng app vào Thùng rác", True,
                                      bundle_id=c["bundle_id"]))
     if btm:
-        recs = btm_for(app, parse_btm(run(["/usr/bin/sfltool", "dumpbtm"], timeout=30)))
+        if run is S.run:  # lệnh thật → dùng chung cache của startup để không hỏi mật khẩu lại
+            rc, out, _ = startup.dumpbtm(cache=startup.BTM_CACHE)
+            out = out if rc == 0 else ""
+        else:
+            out = run(["/usr/bin/sfltool", "dumpbtm"], timeout=30)
+        recs = btm_for(app, parse_btm(out))
         res["login_items"] = [dict(name=r.get("name"), type=r.get("type"), identifier=r.get("identifier"),
                                    path=_url_path(r.get("url")) or r.get("exec"), disposition=r.get("disposition"),
                                    uid=r.get("uid")) for r in recs]

@@ -154,7 +154,7 @@ Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13
 | caches | `~/Library/{Caches,Logs}`, `~/Library/Containers/*/Data/Library/Caches`, `/Library/{Caches,Logs}`, Xcode DerivedData/DeviceSupport/Archives, `simctl list devices unavailable`, `~/.npm`, `~/.gradle/caches`, `~/.cache/*`… |
 | junk | build artifact khi đi qua `~`, installer trong Downloads/Desktop/Documents, file backup trên toàn volume Data (`find -x`, gom theo thư mục + tên gốc, giữ bản mtime mới nhất), Containers/Preferences không khớp bundle id nào đang cài, Thùng rác |
 
-Tính năng trong `mclib/features/` đọc thêm: `launchctl`/`sfltool dumpbtm` (khởi động), `codesign -dv`/cờ quarantine (bám trụ), TCC.db của user (quyền), Spotlight `kMDItemLastUsedDate` (app lâu không mở), appcast Sparkle + `brew outdated --cask` + `softwareupdate -l` (cập nhật), `st_blocks`/`SF_DATALESS` (dung lượng, cloud). Đối chiếu với CleanMyMac: `docs/CLEANMYMAC-PARITY.md`.
+Tính năng trong `mclib/features/` đọc thêm: `launchctl`/`sfltool dumpbtm` (khởi động — lệnh này hỏi mật khẩu admin nên kết quả được nhớ ở `~/Library/Application Support/MacCleaner/dumpbtm-cache.json`, chỉ hỏi lại khi CSDL login item của macOS đổi; xoá file để hỏi lại), `codesign -dv`/cờ quarantine (bám trụ), TCC.db của user (quyền), Spotlight `kMDItemLastUsedDate` (app lâu không mở), appcast Sparkle + `brew outdated --cask` + `softwareupdate -l` (cập nhật), `st_blocks`/`SF_DATALESS` (dung lượng, cloud). Đối chiếu với CleanMyMac: `docs/CLEANMYMAC-PARITY.md`.
 
 ## Giới hạn đã biết
 
