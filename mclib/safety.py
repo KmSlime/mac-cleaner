@@ -279,8 +279,64 @@ def to_trash(p):
         return str(e)[:200]
 
 
-def run_action(it, act):
-    """Thực thi một mục đã qua validate. Trả về lỗi (chuỗi) hoặc None."""
+def permanent_reason(it):
+    """Rào thêm cho xoá vĩnh viễn (mode "permanent"), chạy SAU validate(force=False). Lý do từ chối hoặc None.
+    Chỉ mục quét gốc dọn được (safe/review, action "trash"), id khớp report, nằm trong home (sâu ≥ 2 cấp) và thư mục
+    cha thật (realpath) cũng ở trong home. Ngoài home (vd /Library/Caches), Thùng rác, lệnh đặc biệt → chỉ Thùng rác."""
+    p = it.get("path", "")
+    if it.get("kind") == "trash":
+        return "Thùng rác: dùng Đổ Thùng rác, không xoá vĩnh viễn từng mục"
+    if it.get("safety") not in CLEANABLE or it.get("action") != "trash":
+        return "chỉ xoá vĩnh viễn được mục dọn được chuyển-vào-Thùng-rác"
+    iid = hashlib.sha1(f"{it.get('category', '')}|{it.get('kind', '')}|{p}".encode()).hexdigest()[:10]
+    if it.get("id") != iid:
+        return "id không khớp đường dẫn trong report"
+    home = HOME.rstrip("/")
+    if not p.startswith(home + "/") or len(Path(p).relative_to(home).parts) < 2:
+        return "ngoài thư mục home — chỉ chuyển vào Thùng rác"
+    real_home = os.path.realpath(home)
+    if not os.path.realpath(os.path.dirname(p)).startswith(real_home + "/"):
+        return "thư mục cha trỏ ra ngoài home (symlink) — chỉ chuyển vào Thùng rác"
+    return None
+
+
+def remove_tree(p):
+    """Xoá hẳn một đường dẫn (file, symlink, thư mục). Trả lỗi hoặc None."""
+    try:
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+        else:
+            os.remove(p)
+        return None
+    except OSError as e:
+        return str(e)[:200]
+
+
+def trash_then_delete(p):
+    """Xoá vĩnh viễn an toàn: đổi tên mục vào ~/.Trash dưới một tên mới chưa tồn tại (os.rename — nguyên tử, cùng ổ;
+    khác ổ thì lỗi và không đụng gì), rồi xoá ĐÚNG bản vừa chuyển. Không bao giờ rmtree đường dẫn gốc.
+    Xoá hẳn lỗi giữa chừng → phần còn lại vẫn nằm trong Thùng rác (khôi phục được)."""
+    trash = os.path.join(HOME, ".Trash")
+    try:
+        os.makedirs(trash, exist_ok=True)
+    except OSError as e:
+        return f"không tạo được Thùng rác: {str(e)[:160]}"
+    dest = os.path.join(trash, f"{Path(p).name} (mac-cleaner {time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{time.monotonic_ns() % 10**6})")
+    if os.path.lexists(dest):
+        return "trùng tên trong Thùng rác — thử lại"
+    try:
+        os.rename(p, dest)
+    except OSError as e:
+        return f"không chuyển được vào Thùng rác: {str(e)[:160]}"
+    if not os.path.lexists(dest):
+        return "đã chuyển nhưng không thấy bản trong Thùng rác để xoá hẳn"
+    err = remove_tree(dest)
+    return f"đã vào Thùng rác nhưng xoá hẳn lỗi: {err}" if err else None
+
+
+def run_action(it, act, permanent=False):
+    """Thực thi một mục đã qua validate. Trả về lỗi (chuỗi) hoặc None.
+    permanent=True (đã qua permanent_reason): chuyển vào Thùng rác rồi xoá hẳn đúng bản đó."""
     p = it["path"]
     if act == "empty-trash":
         r = subprocess.run(["/usr/bin/osascript", "-e", 'tell application "Finder" to empty trash'], capture_output=True, text=True)
@@ -290,7 +346,7 @@ def run_action(it, act):
         return None if r.returncode == 0 else (r.stderr or r.stdout).strip()[:200]
     if p.startswith(os.path.join(HOME, "Library", "LaunchAgents") + "/") and p.endswith(".plist"):
         subprocess.run(["/bin/launchctl", "bootout", f"gui/{os.getuid()}", p], capture_output=True)  # ngừng agent trước khi bỏ plist
-    return to_trash(p)
+    return trash_then_delete(p) if permanent else to_trash(p)
 
 
 def select(items, ids=None, categories=None, include_review=False):
@@ -308,29 +364,39 @@ def select(items, ids=None, categories=None, include_review=False):
     return out
 
 
-def clean(rep, chosen, yes=False, log=print, force=False):
+MODES = ("trash", "permanent")
+
+
+def clean(rep, chosen, yes=False, log=print, force=False, mode="trash"):
     """Dọn các mục đã chọn. yes=False: chỉ xem trước (không chạm gì). Mỗi mục được validate lại; --yes ghi
-    logs/clean-<ts>.jsonl."""
+    logs/clean-<ts>.jsonl. mode="permanent": thêm rào permanent_reason, xoá hẳn thay vì để trong Thùng rác
+    (không dùng chung với force)."""
+    if mode not in MODES:
+        raise ValueError(f"mode không hợp lệ: {mode}")
+    permanent = mode == "permanent"
+    if permanent and force:
+        raise ValueError("xoá vĩnh viễn không dùng chung với --force")
     results, freed = [], 0
     log_path = os.path.join(DATA, "logs", "clean-" + time.strftime("%Y%m%d-%H%M%S") + ".jsonl")
     if yes:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
     running = running_bundle_ids() if yes else set()
     for it in chosen:
-        why = validate(it, force)
+        why = validate(it, force) or (permanent_reason(it) if permanent else None)
         if not why and yes and it.get("category") == "caches" and cache_owner_running(it.get("path", ""), running):
             why = "app sở hữu cache đang chạy — đóng app rồi dọn lại"
         status = "skip" if why else "dry-run" if not yes else "ok"
         if not why and yes:
-            err = run_action(it, action_of(it, force))
+            err = run_action(it, action_of(it, force), permanent=permanent)
             if err:
                 status, why = "error", err
         if status in ("ok", "dry-run"):
             freed += it.get("size") or 0
-        res = dict(id=it["id"], path=it["path"], size=it.get("size"), status=status, reason=why or "")
+        res = dict(id=it["id"], path=it["path"], size=it.get("size"), status=status, reason=why or "", mode=mode)
         results.append(res)
-        log(f"[{status:7}] {fmt(it.get('size')):>9}  {it['path']}" + (f"  ({why})" if why else ""))
+        log(f"[{status:7}] {fmt(it.get('size')):>9}  {it['path']}" + (f"  ({why})" if why else "")
+            + ("  [xoá vĩnh viễn]" if permanent and status in ("ok", "dry-run") else ""))
         if yes:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(res, ensure_ascii=False) + "\n")
-    return dict(results=results, freed=freed, log=log_path if yes else None)
+    return dict(results=results, freed=freed, log=log_path if yes else None, mode=mode)

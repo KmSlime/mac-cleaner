@@ -44,6 +44,7 @@ python3 maccleaner.py clean --ids a1b2c3d4e5,... --yes       # dọn đúng các
 python3 maccleaner.py clean --include-review ...             # gồm cả mục "cân nhắc"
 python3 maccleaner.py clean --ids <id> --force --yes          # xoá đích danh cả mục kiểm kê/bảo vệ (app, repo, plugin…)
 python3 maccleaner.py clean --category junk:app-cache --yes # dọn mục của một tính năng (<tính năng>:<kind>)
+python3 maccleaner.py clean --ids <id>,... --mode permanent --yes  # xoá VĨNH VIỄN (chỉ mục quét gốc trong home, không kèm --force)
 
 # Tính năng (mclib/features/) — mặc định chỉ đọc / xem trước; chỉ --yes mới làm thật (hook bắt hỏi duyệt)
 python3 maccleaner.py status [--json]                       # sức khoẻ máy: ổ, RAM/swap, CPU, pin, mạng, thiết bị, cảnh báo
@@ -65,7 +66,8 @@ swift run MacCleaner --snapshot x.png            # render report mới nhất ra
 TMPDIR=/tmp python3 -m unittest discover tests   # unit test
 ```
 
-Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 5.9+ cho app. Không có dependency ngoài.
+Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 6.2+ cho app. Lõi Python không có dependency ngoài;
+app Swift dùng [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) cho terminal nhúng (SwiftPM tự tải khi build).
 App `.app` ghi report/log vào `~/Library/Application Support/MacCleaner`; `swift run`/CLI ghi cạnh source (`reports/`, `logs/`, đã gitignore).
 
 ## Kiến trúc
@@ -84,19 +86,22 @@ Bản tương tác (có liên kết tới từng dòng mã nguồn): [docs/archi
 
 ## Mục lục
 
+Trang **Tổng quan** đọc từ trên xuống: *Có thể giải phóng* (dung lượng dọn được, thanh đĩa: đã dùng / an toàn / cân nhắc / trống, nút **Xem đề xuất xoá**) → *Theo mức an toàn* (thẻ Dọn an toàn / Cân nhắc / Kiểm kê & bảo vệ) → *Theo nhóm* (biểu đồ theo nhóm + mục lớn nhất) → *Chi tiết* (bảng mọi mục, lọc theo mức/loại/tìm kiếm) → *Theo chủ sở hữu*. Đang quét thì có thanh trạng thái (bước hiện tại); chưa có report thì có màn hình trống với nút **Quét ngay**.
+
 Sidebar là cây mục lục: **Tổng quan** → từng nhóm (Ứng dụng, Plugin, Extension, Git, Cache & log, Junk) → từng loại bên trong (vd Cache & log › Log, Cache người dùng, Xcode DerivedData…), mỗi nút có số mục và dung lượng. Khu **Tính năng** liệt kê kết quả của `mclib/features/` trong report (sức khoẻ máy, rác hệ thống, dung lượng, file trùng, cloud, gỡ app, cập nhật, khởi động, bám trụ, riêng tư, bảo trì); lệnh đổi trạng thái máy chỉ hiện để copy chạy trong Terminal. Bấm mũi tên để mở/thu gọn, bấm tên để xem. Bấm bất kỳ chỗ nào trên trang dẫn tới danh sách (một loại trong cây, một thanh biểu đồ, thẻ KPI, một app trong "App chiếm cache", một app trong "Plugin theo app", tiêu đề các thẻ) thì bảng được lọc và **trang cuộn tới bảng**. Bộ lọc đang bật hiện thành chip phía trên bảng, bấm ✕ để bỏ.
 
 ## Xoá
 
 **Mọi mục hiện trên dashboard đều xoá được**, trừ những chỗ macOS khoá: phần hệ thống được SIP bảo vệ (`/System`, `/usr` ngoài `/usr/local`, `/bin`, `/sbin` — app và plugin có sẵn của macOS), thư mục gốc (`/Applications`, `~`, `~/Documents`, `~/Library`…), và thư mục Mac Cleaner đang chạy trên đó. Những mục này có nút xoá mờ kèm lý do.
 
+- **Đề xuất xoá (popup):** quét xong tự bật (nút **Đề xuất xoá** ở đầu trang để mở lại). Hai nhóm: **Khuyến nghị** (mục `an toàn`, chọn sẵn) và **Cân nhắc** (mục `cân nhắc`, không chọn sẵn), gộp theo nhóm, tick cả nhóm hoặc từng mục, có tổng dung lượng đã chọn. Kiểu xoá: **Thùng rác** (mặc định) hoặc **Xoá vĩnh viễn** (hỏi xác nhận lần hai, phải tick "Tôi hiểu"). Popup do board giữ, theo theme của board; host chỉ nhận message `clean:{"ids":[…],"mode":"trash"|"permanent","yes":true}`.
 - **Từng mục:** nút **🗑** trên mỗi dòng của bảng, của "Lớn nhất" và "Git repos" (nút **ⓘ** để xem chi tiết). Hộp thoại có đường dẫn, loại, dung lượng, cách xoá, **Xem trước** và **Hiện trong Finder**. Mục `an toàn` xoá ngay; mục `cân nhắc` phải tick xác nhận; mục `kiểm kê`/`bảo vệ` (app, repo, plugin, backup mới nhất…) phải tick xác nhận và có cảnh báo theo loại (repo còn thay đổi chưa commit, plugin trong bundle app khác, app cài bằng quyền admin…).
 - **Cả nhóm:** nút 🗑 cạnh mỗi app trong "App chiếm cache" (mọi cache của app đó) và "Plugin theo app".
 - **Xoá toàn bộ** (cạnh Log, Quét lại): xoá mọi mục đang hiện trong bảng theo nhóm và bộ lọc hiện tại. Mặc định chỉ gồm mục dọn được (`an toàn` + `cân nhắc`); tick thêm để gồm cả mục kiểm kê/bảo vệ.
 - **Chọn nhiều:** checkbox trên mỗi dòng → thanh dưới đáy có **Xem trước** và **Xoá → Thùng rác**.
 - **Thùng rác:** mục Thùng rác trong Junk có nút **Đổ Thùng rác** riêng (xoá vĩnh viễn, phải tick xác nhận; macOS có thể hỏi quyền cho Mac Cleaner điều khiển Finder). Thùng rác không bao giờ gộp vào xoá hàng loạt.
 
-Mọi thứ khác đều **chuyển vào Thùng rác**, khôi phục được cho tới khi đổ. LaunchAgent được ngừng (`launchctl bootout`) trước khi chuyển plist vào Thùng rác. Mỗi mục được kiểm lại ngay trước khi xoá. Trong report HTML tĩnh, nút xoá copy lệnh `clean --ids …` (thêm `--force` nếu có mục kiểm kê) để dán vào Terminal.
+Mọi thứ khác đều **chuyển vào Thùng rác**, khôi phục được cho tới khi đổ — trừ khi chọn **Xoá vĩnh viễn** (`clean --mode permanent`): mỗi mục vẫn qua đủ kiểm tra của Thùng rác, thêm rào riêng (chỉ mục quét gốc `an toàn`/`cân nhắc` chuyển-vào-Thùng-rác, id khớp đường dẫn, nằm trong home sâu ≥ 2 cấp, thư mục cha thật không trỏ ra ngoài home; không kèm `--force`), rồi được đổi tên vào `~/.Trash` và xoá hẳn **đúng bản vừa chuyển** — không bao giờ xoá thẳng đường dẫn gốc; lỗi giữa chừng thì phần còn lại vẫn ở Thùng rác. LaunchAgent được ngừng (`launchctl bootout`) trước khi chuyển plist vào Thùng rác. Mỗi mục được kiểm lại ngay trước khi xoá. Trong report HTML tĩnh, nút xoá copy lệnh `clean --ids …` (thêm `--force` nếu có mục kiểm kê) để dán vào Terminal.
 
 ## Phân loại sau quét
 
@@ -113,9 +118,22 @@ Mặc định có `10-classify` → [scripts/classify.py](scripts/classify.py) i
 - Danh sách luôn giữ: `--keep PATH` hoặc file `MACCLEANER_KEEP_FILE`. Lịch sử dọn đọc từ `logs/clean-*.jsonl` (+ `MACCLEANER_EXTRA_LOGS`).
 - Chỉ đọc, không xoá gì. Dọn vẫn qua `clean --ids … --yes`.
 
-## Terminal log
+## Terminal
 
-Nút **Log** (⌘L) mở bảng log ở đáy app: lệnh đang chạy, từng bước quét kèm số mục và thời gian, nhịp báo trong các bước dài (duyệt home, tìm backup trên toàn ổ, đo dung lượng), từng mục khi dọn, và lỗi nếu có. Lần mở đầu tiên (chưa có report) app tự quét và tự mở log. Log cũng ghi ra `~/Library/Application Support/MacCleaner/logs/app-<ngày>.log`; nút **Copy** để gửi khi cần báo lỗi. Nút **Mở Terminal** bật Terminal.app thật, chạy `tail -F` log hiện tại; Ctrl-C để thôi xem và gõ lệnh `mac-cleaner` ngay trong thư mục dữ liệu.
+App có **terminal thật** (PTY, [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)) ở dưới board — kéo thanh chia để đổi cỡ, **Thu gọn ▾** còn thanh tiêu đề, ⌘L hoặc nút **Terminal** trên board để hiện và focus. Phiên chạy `tail -F` log của app: lệnh đang chạy, từng bước quét kèm số mục và thời gian, nhịp báo trong các bước dài, từng mục khi dọn, lỗi nếu có. Ctrl-C để thôi xem log và dùng shell đăng nhập ngay trong thư mục dữ liệu (gõ lệnh `mac-cleaner`). Phiên kết thúc thì bấm **Mở lại**. Nút **Terminal.app** mở cùng script đó trong Terminal.app. Log ghi ở `~/Library/Application Support/MacCleaner/logs/app-<ngày>.log`. Lần mở đầu tiên (chưa có report) app tự quét và tự hiện terminal.
+
+Board không có view log riêng: khi nhúng trong Ciel Monitor, terminal SwiftTerm của Ciel Monitor nhận message `terminal`.
+
+## Nhúng vào app khác (giao thức host ↔ board)
+
+| Hướng | Gọi | Ý nghĩa |
+|---|---|---|
+| host → board | `window.render(report)` | hiện report (sau `scan --json` hoặc file `report-*.json`); nếu trước đó có `scanStarted` thì tự bật popup Đề xuất xoá |
+| host → board | `window.scanStarted(first)` · `window.scanFailed(msg)` · `window.log(line)` | trạng thái quét (dòng `▸ …` là bước hiện tại) |
+| host → board | `window.cleaned(result)` | JSON của `clean --json` |
+| host → board | `window.applyTheme({bg, surface, text, muted, accent, danger, ok, warn, info?, surface2?, line?, faint?, onAccent?, font?, mono?, scale?, dark})` | đồng bộ theme (màu hex `#rrggbb`); `applyTheme(null)` về theme mặc định. Không gọi → theme của mac-cleaner |
+| host → board | `window.openProposal()` | mở popup Đề xuất xoá |
+| board → host | `scan` · `terminal` · `copy:<text>` · `reveal:<path>` · `clean:{"ids":[…],"mode":"trash"\|"permanent","yes":bool,"force":bool}` | qua `webkit.messageHandlers.cleaner` |
 
 Chạy app với thư mục dữ liệu khác: `MACCLEANER_DATA=/đường/dẫn open -a ~/Applications/MacCleaner.app` (dùng chung biến với lệnh `mac-cleaner`).
 
