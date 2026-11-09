@@ -236,6 +236,57 @@ class Gather(unittest.TestCase):
             self.assertTrue(all(r["loaded"] in (None, False) for r in g["records"]))
 
 
+class DumpBtmCache(unittest.TestCase):
+    """sfltool dumpbtm hỏi mật khẩu mỗi lần → chỉ chạy lại khi CSDL BTM đổi."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = os.path.join(self.tmp.name, "db")
+        os.makedirs(self.db)
+        self.btm = os.path.join(self.db, "BackgroundItems-v16.btm")
+        with open(self.btm, "w") as f:
+            f.write("a")
+        self.cache = os.path.join(self.tmp.name, "c", "dumpbtm-cache.json")
+        self.calls = 0
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_fake(self, rc=0, out="OUT"):
+        def run(cmd, timeout=30):
+            self.calls += 1
+            return rc, out, "" if rc == 0 else "denied"
+        return run
+
+    def test_asks_once_until_btm_changes(self):
+        run = self.run_fake()
+        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db), (0, "OUT", ""))
+        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db), (0, "OUT", ""))
+        self.assertEqual(self.calls, 1)
+        self.assertEqual(os.stat(self.cache).st_mode & 0o777, 0o600)
+        with open(self.btm, "w") as f:
+            f.write("changed")
+        startup.dumpbtm(run, cache=self.cache, db_dir=self.db)
+        self.assertEqual(self.calls, 2)
+
+    def test_denied_is_remembered_but_timeout_is_not(self):
+        rc, out, err = startup.dumpbtm(self.run_fake(rc=1, out=""), cache=self.cache, db_dir=self.db)
+        rc2, _, err2 = startup.dumpbtm(self.run_fake(), cache=self.cache, db_dir=self.db)
+        self.assertEqual((rc, rc2, self.calls), (1, 1, 1))
+        self.assertIn(self.cache, err2)
+        os.remove(self.cache)
+        startup.dumpbtm(lambda cmd, timeout=30: (None, "", "timeout"), cache=self.cache, db_dir=self.db)
+        self.assertFalse(os.path.exists(self.cache))
+
+    def test_no_cache_without_signature_or_path(self):
+        run = self.run_fake()
+        startup.dumpbtm(run, cache=None, db_dir=self.db)
+        startup.dumpbtm(run, cache=self.cache, db_dir=os.path.join(self.tmp.name, "missing"))
+        startup.dumpbtm(run, cache=self.cache, db_dir=os.path.join(self.tmp.name, "missing"))
+        self.assertEqual(self.calls, 3)
+        self.assertFalse(os.path.exists(self.cache))
+
+
 class Change(unittest.TestCase):
     def test_disable_preview_touches_nothing(self):
         with tempfile.TemporaryDirectory() as d:

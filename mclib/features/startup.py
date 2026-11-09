@@ -40,6 +40,56 @@ def run_cmd(cmd, timeout=30):
         return None, "", str(e)
 
 
+# ---------- sfltool dumpbtm (hỏi mật khẩu một lần) ----------
+# `sfltool dumpbtm` bắt nhập mật khẩu admin MỖI lần chạy (hộp thoại "sfltool wants to make changes"), mà scan chạy định kỳ
+# (autoclean, app, lệnh) → nhớ kết quả theo chữ ký file CSDL BTM: chỉ hỏi lại khi login item / mục chạy nền thực sự đổi.
+# Cache để ở Application Support (thứ mac-cleaner không dọn), dùng chung cho mọi nơi gọi, bất kể MACCLEANER_DATA.
+BTM_DB_DIR = "/private/var/db/com.apple.backgroundtaskmanagement"
+BTM_CACHE = os.path.join(S.HOME, "Library", "Application Support", "MacCleaner", "dumpbtm-cache.json")
+
+
+def btm_signature(db_dir=BTM_DB_DIR):
+    """Chữ ký (tên:mtime_ns:size của mọi BackgroundItems-v*.btm) — đổi khi macOS ghi lại CSDL BTM. None nếu không đọc được."""
+    try:
+        names = sorted(n for n in os.listdir(db_dir) if n.startswith("BackgroundItems-") and n.endswith(".btm"))
+        parts = []
+        for n in names:
+            st = os.stat(os.path.join(db_dir, n))
+            parts.append(f"{n}:{st.st_mtime_ns}:{st.st_size}")
+    except OSError:
+        return None
+    return "|".join(parts) or None
+
+
+def dumpbtm(run=run_cmd, cache=None, db_dir=BTM_DB_DIR, timeout=60):
+    """(mã thoát, stdout, stderr) của `sfltool dumpbtm`. cache=đường dẫn file → dùng lại kết quả khi chữ ký CSDL BTM chưa đổi
+    (kể cả lần bị từ chối: không hỏi lại tới khi BTM đổi hoặc xoá file cache). Không cache khi lệnh không chạy được/quá giờ."""
+    sig = btm_signature(db_dir) if cache else None
+    if sig:
+        try:
+            with open(cache, encoding="utf-8") as f:
+                c = json.load(f)
+            if c.get("sig") == sig:
+                err = c.get("err") or ""
+                if c.get("rc") != 0:
+                    err = (err.strip() + f" (kết quả nhớ từ lần trước; xoá {cache} để hỏi lại)").strip()
+                return c.get("rc"), c.get("out") or "", err
+        except (OSError, ValueError, AttributeError):
+            pass
+    rc, out, err = run([SFLTOOL, "dumpbtm"], timeout=timeout)
+    if sig and rc is not None:
+        try:
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            tmp = cache + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(dict(sig=sig, rc=rc, out=out, err=err, at=time.strftime("%Y-%m-%d %H:%M:%S")), f)
+            os.replace(tmp, cache)
+        except OSError:
+            pass
+    return rc, out, err
+
+
 # ---------- parse ----------
 def parse_launchctl_list(text):
     """`launchctl list` → {label: {"pid": int|None, "status": str}}."""
@@ -222,7 +272,7 @@ def gather(home=None, run=run_cmd, uid=None, system_dirs=SYSTEM_DIRS):
         if r["label"] in overrides:
             r["launchctl_disabled"] = overrides[r["label"]]
 
-    rc, out, err = run([SFLTOOL, "dumpbtm"], timeout=60)
+    rc, out, err = dumpbtm(run, cache=BTM_CACHE if run is run_cmd else None)  # chỉ cache lệnh thật, không cache fake của test
     btm = parse_btm(out) if rc == 0 else []
     if rc != 0 or not btm:
         errors.append("sfltool dumpbtm không có dữ liệu" + (f": {(err or '').strip()[:120]}" if err else ""))
