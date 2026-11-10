@@ -129,7 +129,18 @@ Board không có view log riêng: khi nhúng trong Ciel Monitor, terminal SwiftT
 
 ## Cập nhật
 
-Nút **Cài đặt** (cuối sidebar của app) hoặc lệnh `self-update`:
+**Đã cài app rồi, chỉ muốn cập nhật bằng một lệnh** (không cần clone repo; cần app từ bản 1.10.0) — mở Terminal và gõ:
+
+```sh
+python3 ~/Applications/MacCleaner.app/Contents/Resources/maccleaner.py self-update apply --yes
+```
+
+App nằm ở `/Applications` thì đổi `~/Applications` thành `/Applications`. Lệnh tải bản phát hành mới nhất, kiểm xong mới thay app (app cũ vào Thùng rác);
+đang mở app thì thoát rồi mở lại để chạy bản mới. Chỉ muốn xem có bản mới không: thay `apply --yes` bằng `check`. Bỏ `--yes` để xem trước các bước mà chưa làm gì.
+App cũ hơn 1.10.0 chưa có lệnh này: tải `.zip` ở trang [Releases](https://github.com/KmSlime/mac-cleaner/releases/latest) một lần, từ đó về sau dùng lệnh trên.
+Cài bằng `install.sh` (có lệnh `mac-cleaner`): `mac-cleaner self-update apply --yes`.
+
+Chi tiết — nút **Cài đặt** (cuối sidebar của app) hoặc lệnh `self-update`:
 
 - **Kiểm tra / cập nhật tay:** `self-update check` hỏi GitHub bản phát hành mới nhất của repo này; `self-update apply` xem trước các bước, thêm `--yes` để cài.
   Bản clone git: `git fetch --tags` rồi fast-forward tới đúng tag và chạy lại `install.sh` (từ chối khi còn thay đổi chưa commit).
