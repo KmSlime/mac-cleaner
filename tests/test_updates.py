@@ -1,9 +1,10 @@
-"""Test liệt kê cập nhật: appcast mẫu, bundle giả, lệnh giả — không dùng mạng."""
+"""Tests of the update listing: sample appcast, fake bundles, fake commands — no network."""
 import contextlib
 import io
 import json
 import os
 import plistlib
+import ssl
 import sys
 import tempfile
 import unittest
@@ -15,7 +16,7 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
 import maccleaner as mc  # noqa: E402
 from mclib import registry  # noqa: E402
-from mclib.features import updates as UP  # noqa: E402
+from mclib.features import selfupdate as SU, updates as UP  # noqa: E402
 
 APPCAST = """<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -185,6 +186,47 @@ class Sparkle(unittest.TestCase):
         for e in res["items"]:
             registry.check_entry(e)
         self.assertTrue(res["summary"]["offline"])
+
+
+class Tls(unittest.TestCase):
+    """HTTPS keeps working on a Python whose own trust store is empty (seen with python.org builds)."""
+
+    @staticmethod
+    def empty_store():
+        return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # verifies, but knows no root certificate
+
+    def test_context_still_verifies(self):
+        ctx = UP.tls_context()
+        self.assertEqual(ctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(ctx.check_hostname)
+
+    @unittest.skipUnless(os.path.exists(UP.SYSTEM_CA), "no system root bundle on this machine")
+    def test_system_roots_are_added_to_an_empty_store(self):
+        self.assertEqual(self.empty_store().cert_store_stats()["x509_ca"], 0)
+        with mock.patch.object(ssl, "create_default_context", self.empty_store):
+            ctx = UP.tls_context()
+        self.assertGreater(ctx.cert_store_stats()["x509_ca"], 0)
+        self.assertEqual(ctx.verify_mode, ssl.CERT_REQUIRED)
+
+    def test_missing_or_broken_bundle_leaves_the_default_store(self):
+        with tempfile.TemporaryDirectory() as td:
+            junk = os.path.join(td, "junk.pem")
+            with open(junk, "w") as f:
+                f.write("not a certificate")
+            for path in (os.path.join(td, "none.pem"), junk):
+                with mock.patch.object(UP, "SYSTEM_CA", path), \
+                        mock.patch.object(ssl, "create_default_context", self.empty_store):
+                    ctx = UP.tls_context()
+                self.assertEqual(ctx.cert_store_stats()["x509_ca"], 0, path)
+                self.assertEqual(ctx.verify_mode, ssl.CERT_REQUIRED)
+
+    def test_every_request_uses_the_context(self):
+        with mock.patch.object(UP.urllib.request, "urlopen", return_value="response") as real:
+            self.assertEqual(UP.urlopen("request", timeout=3), "response")
+        (req,), kw = real.call_args
+        self.assertEqual((req, kw["timeout"]), ("request", 3))
+        self.assertIsInstance(kw["context"], ssl.SSLContext)
+        self.assertIs(SU.Env(root="/x", data="/x", home="/x").opener, UP.urlopen)  # self-update: same opener
 
 
 if __name__ == "__main__":

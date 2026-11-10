@@ -39,7 +39,7 @@ import urllib.request
 
 import mclib
 from mclib import safety as S
-from mclib.features.updates import newer
+from mclib.features.updates import newer, urlopen
 
 NAME = "self-update"
 REPO = "KmSlime/mac-cleaner"
@@ -85,7 +85,7 @@ class Env:
         self.root = root or S.ROOT
         self.data = data or S.DATA
         self.home = home or S.HOME
-        self.opener = opener or urllib.request.urlopen
+        self.opener = opener or urlopen
         self.call = call or _call
         self.trash = trash or S.to_trash
         self.running = running or S.running_bundle_ids
