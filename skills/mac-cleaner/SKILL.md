@@ -1,7 +1,7 @@
 ---
 name: mac-cleaner
 description: Dọn dẹp, kiểm kê và theo dõi macOS an toàn — ứng dụng (gỡ sạch kèm file liên quan, bản cập nhật), plugin, extension, git repo, cache, log, rác hệ thống/trình duyệt, installer, build artifact, file backup cũ, dữ liệu app đã gỡ, file lớn/trùng, bản đồ dung lượng, cloud, mục khởi động, phần mềm bám trụ, quyền riêng tư, bảo trì — bằng một lệnh `mac-cleaner` (xoá = chuyển vào Thùng rác, có log; không phụ thuộc công cụ ngoài). Dùng khi người dùng gọi /mac-cleaner, nhờ "dọn máy", "giải phóng dung lượng", "quét file rác", "file leftover", "app đã gỡ còn sót", "gỡ app sạch", "file trùng", "file lớn", "mục khởi động", "máy chậm", hay muốn dashboard dung lượng.
-argument-hint: "[scan|clean|junk|uninstall|updates|analyze|large|dupes|cloud|startup|audit|privacy|maintain|status] [ghi chú]"
+argument-hint: "[scan|clean|junk|uninstall|updates|analyze|large|dupes|cloud|startup|audit|privacy|maintain|status|self-update|admin] [ghi chú]"
 ---
 
 Đối số: `$ARGUMENTS` (trống → `scan`). Một công cụ, **một quy trình**: luôn xem trước, báo bảng, chỉ xoá/đổi khi người dùng ra lệnh.
@@ -23,7 +23,9 @@ Mọi lệnh dưới đây **mặc định chỉ đọc / xem trước**; chỉ 
 | Mục khởi động (LaunchAgent, login item) | `startup list` · `startup disable\|enable <label>` | `--yes` (ghi log `logs/startup-*.jsonl`) |
 | Phần mềm bám trụ + chữ ký mã | `audit [--gatekeeper]` | chỉ liệt kê (`--gatekeeper` gọi `spctl`, có thể hỏi mạng Apple) |
 | Dấu vết riêng tư (lịch sử/cookie/phiên trình duyệt, quyền TCC) | `privacy list` · `privacy reset <dịch vụ> <bundle id>` | `--yes` (`tccutil reset`, log `logs/privacy-*.jsonl`) |
-| Bảo trì (QuickLook, LaunchServices, snapshot TM…) | `maintain list` · `maintain run <tác vụ>` | `--yes`; tác vụ cần `sudo` **chỉ in lệnh** để người dùng tự chạy |
+| Bảo trì (QuickLook, LaunchServices, snapshot TM…) | `maintain list` · `maintain run <tác vụ>` | `--yes`; tác vụ cần `sudo` **chỉ in lệnh** để người dùng tự chạy, trừ tác vụ người dùng đã cấp bằng `admin grant` |
+| Cập nhật mac-cleaner | `self-update status` · `self-update check` · `self-update apply` · `self-update auto on\|off [--every daily\|weekly] [--at HH:MM] [--install]` | `--yes`; lịch tự kiểm tra **mặc định tắt**, chỉ bật khi người dùng đồng ý cho tự kết nối mạng |
+| Quyền quản trị cấp một lần (đọc login item không hỏi mật khẩu, vài tác vụ bảo trì) | `admin list` · `admin grant\|revoke <id>…\|all` | `--yes` → macOS hỏi mật khẩu quản trị **một lần** (người dùng tự nhập); ghi `/etc/sudoers.d/mac-cleaner`, không lưu mật khẩu |
 | Sức khoẻ máy (ổ, RAM/swap, CPU, pin, mạng, cảnh báo) | `status` | chỉ đọc |
 
 `mac-cleaner` do `./install.sh` của repo cài (`~/.local/bin`, gọi `python3 maccleaner.py`). Thiếu lệnh → dùng `python3 <repo>/maccleaner.py …` hoặc bảo người dùng chạy `./install.sh`; **không** tự cài công cụ dọn dẹp khác bằng `curl | bash`.
@@ -43,7 +45,7 @@ Mole (`mo`) không còn là dependency. Nếu người dùng tự cài và muố
    - gỡ app: `uninstall <app> --yes`; tắt mục khởi động: `startup disable <label> --yes`; reset quyền: `privacy reset <dịch vụ> <bundle id> --yes`; bảo trì: `maintain run <tác vụ> --yes` — mỗi lệnh một mục người dùng đã chỉ đích danh.
 5. Đo lại `df`, báo số thật so với ước lượng, liệt kê mục `skip`/`error` và lý do.
 
-Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`uninstall`/`startup disable|enable`/`privacy reset`/`maintain run` kèm `--yes`, `mo` không `--dry-run`, đụng Thùng rác) — đó là chốt, không phải lỗi.
+Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`uninstall`/`startup disable|enable`/`privacy reset`/`maintain run`/`self-update apply`/`self-update auto on`/`admin grant|revoke` kèm `--yes`, `mo` không `--dry-run`, đụng Thùng rác) — đó là chốt, không phải lỗi.
 
 ## Hiểu đúng trước khi đề xuất xoá
 
@@ -53,6 +55,7 @@ Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`
 - **Cache tải lại rất lâu**: `ms-playwright*`, `JetBrains*` → cân nhắc, hỏi trước.
 - **Cache của app đang chạy**: đóng app rồi mới dọn (mac-cleaner tự bỏ qua và báo `skip`).
 - **Build artifact vừa dùng trong 7 ngày**: đang làm dự án đó → không đề xuất.
+- **Xcode DerivedData**: luôn nằm ở mức `review` — **đề xuất** cho người dùng (kèm dung lượng, "lần build sau lâu hơn"), **không bao giờ dọn tự động** (không nằm trong `clean` mặc định, lịch dọn tự động cũng bỏ qua). Chỉ dọn khi người dùng chọn đích danh.
 - **Model AI đã tải** (ollama, LM Studio, `~/.cache/huggingface`…), **bản sao lưu iOS**, **snapshot Time Machine**: chỉ liệt kê — tải lại/khôi phục rất lâu, người dùng tự quyết.
 - **Mục khởi động / quyền TCC**: tắt hay reset có thể làm app ngừng hoạt động đúng; chỉ đề xuất mục hỏng/không ký/không còn app, và nói rõ hậu quả.
 
@@ -61,7 +64,7 @@ Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`
 - Dữ liệu trình quản lý mật khẩu, keychain, `~/.ssh`, `~/.gnupg`, ví tiền mã hoá, ứng dụng xác thực.
 - Bất cứ thứ gì của **phần mềm bảo mật / quản lý thiết bị** (EDR, MDM: CrowdStrike, SentinelOne, Jamf, Kandji, Defender…) — xoá có thể bị coi là can thiệp và báo động phía bảo mật công ty. Gỡ bằng trình gỡ của hãng.
 - Phần hệ thống macOS khoá bằng SIP, thư mục gốc (`/Applications`, `/Library`, `/Users/*`, `/opt/homebrew`…) — mac-cleaner chặn cứng, kể cả `--force`.
-- Đổ Thùng rác hay dùng `sudo` khi người dùng chưa nói rõ (tác vụ `maintain` cần sudo chỉ in lệnh cho người dùng tự chạy). Thùng rác cần Full Disk Access cho terminal.
+- Đổ Thùng rác hay dùng `sudo` khi người dùng chưa nói rõ (tác vụ `maintain` cần sudo chỉ in lệnh cho người dùng tự chạy; `admin grant` chỉ chạy khi người dùng yêu cầu, không tự đề xuất `all`). Thùng rác cần Full Disk Access cho terminal.
 - Dán đường dẫn / danh sách app của người dùng ra ngoài máy (report là dữ liệu cá nhân).
 
 ## Dashboard

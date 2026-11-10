@@ -171,6 +171,30 @@ func cleanArguments(report: String, payload: String) -> [String]? {
     return a
 }
 
+/// Board payload `selfupdate:{"action":…}` or `admin:{"action":…,"ids":[…]}` → (action, maccleaner.py arguments).
+/// Turning the schedule on needs `"consent": true` (the board's checkbox). Ids are plain slugs; maccleaner.py checks
+/// them against its own allowlist. Malformed → nil.
+func settingsArguments(kind: String, payload: String) -> (action: String, args: [String])? {
+    guard let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+          let action = obj["action"] as? String else { return nil }
+    func matches(_ s: String, _ re: String) -> Bool { s.range(of: re, options: .regularExpression) != nil }
+    switch (kind, action) {
+    case ("selfupdate", "status"), ("selfupdate", "check"): return (action, ["self-update", action, "--json"])
+    case ("selfupdate", "apply"): return (action, ["self-update", "apply", "--yes", "--json"])
+    case ("selfupdate", "off"): return (action, ["self-update", "auto", "off", "--json"])
+    case ("selfupdate", "on"):
+        guard obj["consent"] as? Bool == true, let every = obj["every"] as? String, every == "daily" || every == "weekly",
+              let at = obj["at"] as? String, matches(at, "^([01][0-9]|2[0-3]):[0-5][0-9]$") else { return nil }
+        return (action, ["self-update", "auto", "on", "--every", every, "--at", at,
+                         obj["install"] as? Bool == true ? "--install" : "--no-install", "--yes", "--json"])
+    case ("admin", "list"): return (action, ["admin", "list", "--json"])
+    case ("admin", "grant"), ("admin", "revoke"):
+        guard let ids = obj["ids"] as? [String], !ids.isEmpty, ids.allSatisfy({ matches($0, "^[a-z][a-z-]{1,30}$") }) else { return nil }
+        return (action, ["admin", action] + ids + ["--yes", "--json"])
+    default: return nil
+    }
+}
+
 /// Chuỗi JSON → literal JS an toàn để nhúng vào evaluateJavaScript.
 func jsLiteral(_ s: String) -> String {
     let data = try! JSONSerialization.data(withJSONObject: [s], options: [])
@@ -360,14 +384,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             log("Chưa có report — quét lần đầu toàn máy (thường 1–5 phút)")
             scan(first: true)
         }
+        // The board shows its settings button only after these two answers arrive (no network, no dialog).
+        settings("selfupdate", #"{"action":"status"}"#)
+        settings("admin", #"{"action":"list"}"#)
     }
 
     func render(_ json: String) {
         // MC_SCRIPT: đường dẫn maccleaner.py thật, để board in đúng lệnh cho người dùng copy vào Terminal.
         // `--view proposal`: chụp popup Đề xuất xoá; tên khác: khu Tính năng đó.
-        let view = snapshotPath == nil ? "" : snapshotView.map {
-            $0 == "proposal" ? "; window.openProposal()" : "; window.showFeature && window.showFeature(\(jsLiteral($0)))"
-        } ?? ""
+        // Snapshots switch CSS transitions off: an offscreen web view never advances them (a drawer would stay closed).
+        let view = snapshotPath == nil ? "" : "; document.head.insertAdjacentHTML('beforeend', '<style>*{transition:none!important}</style>')" + (snapshotView.map {
+            $0 == "proposal" ? "; window.openProposal()" : $0 == "settings" ? "; window.openSettings()" : "; window.showFeature && window.showFeature(\(jsLiteral($0)))"
+        } ?? "")
         web.evaluateJavaScript("window.MC_SCRIPT = \(jsLiteral(script.path)); window.render(JSON.parse(\(jsLiteral(json))))" + view) { _, error in
             if let error { NSLog("render failed: \(error)") }
             if let path = self.snapshotPath { self.snapshot(to: path) }
@@ -418,6 +446,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
+    /// Settings drawer: run `self-update …` / `admin …` and answer with window.settings(kind, action, result);
+    /// a failure becomes `{"error": …}`. After an update that replaced this app, start the new copy.
+    func settings(_ kind: String, _ payload: String) {
+        guard let (action, a) = settingsArguments(kind: kind, payload: payload) else { log("✗ Yêu cầu cài đặt không hợp lệ"); return }
+        if action != "status" && action != "list" { log("$ python3 maccleaner.py " + a.joined(separator: " ")) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = python(a, onLine: { self.log($0) })
+            DispatchQueue.main.async {
+                var json = "{}", restart = false
+                switch r {
+                case .success(let s):
+                    json = s
+                    restart = ((try? JSONSerialization.jsonObject(with: Data(s.utf8))) as? [String: Any])?["restart"] as? Bool == true
+                case .failure(let e):
+                    json = String(decoding: try! JSONSerialization.data(withJSONObject: ["error": e.localizedDescription]), as: UTF8.self)
+                }
+                self.web.evaluateJavaScript("window.settings && window.settings(\(jsLiteral(kind)), \(jsLiteral(action)), JSON.parse(\(jsLiteral(json))))")
+                if restart && inBundle { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.relaunch() } }
+            }
+        }
+    }
+
+    /// Start the bundle at this app's path as a new instance, then quit this one.
+    func relaunch() {
+        let cfg = NSWorkspace.OpenConfiguration()
+        cfg.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: cfg) { _, error in
+            DispatchQueue.main.async {
+                if let error { self.log("✗ Không tự mở lại được app (\(error.localizedDescription)) — hãy mở lại bằng tay") } else { NSApp.terminate(nil) }
+            }
+        }
+    }
+
     /// `--snapshot out.png`: render một lần, lưu ảnh rồi thoát (kiểm UI không cần quyền màn hình).
     func snapshot(to path: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -435,6 +496,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard let body = message.body as? String else { return }
         if body == "scan" { scan(first: false) }
         else if body.hasPrefix("clean:") { clean(String(body.dropFirst(6))) }
+        else if body.hasPrefix("selfupdate:") { settings("selfupdate", String(body.dropFirst(11))) }
+        else if body.hasPrefix("admin:") { settings("admin", String(body.dropFirst(6))) }
         else if body.hasPrefix("copy:") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(String(body.dropFirst(5)), forType: .string)
