@@ -71,6 +71,13 @@ EOF
 chmod +x "$BIN/mac-cleaner"
 ok "$BIN/mac-cleaner (report: $DATA)"
 
+# --- 3b. Schedules that already run mac-cleaner on this machine (an older install's, or another tool's)
+if scheds="$("$BIN/mac-cleaner" self-update schedule list 2>/dev/null)" && [ "$(printf '%s\n' "$scheds" | wc -l)" -gt 1 ]; then
+  say "Lịch của Mac Cleaner đang có trên máy"
+  printf '%s\n' "$scheds" | sed '1d'
+  warn "Xem, sửa (cho lịch chạy script của bản vừa cài) hoặc xoá: mở app → Cài đặt → \"Lịch đang có trên máy\", hoặc: mac-cleaner self-update schedule edit|remove <nhãn>"
+fi
+
 # --- 4. Plugin Claude Code (tuỳ có Claude)
 if [ "$DO_PLUGIN" = 1 ]; then
   say "Plugin Claude Code"
@@ -87,4 +94,4 @@ if [ "$DO_PLUGIN" = 1 ]; then
 fi
 
 case ":$PATH:" in *":$BIN:"*) ;; *) warn "Thêm $BIN vào PATH: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc && exec zsh" ;; esac
-say "Xong. Mở dashboard: open ~/Applications/MacCleaner.app · Quét: mac-cleaner scan"
+say "Xong — $("$BIN/mac-cleaner" --version 2>/dev/null || echo mac-cleaner). Mở dashboard: open ~/Applications/MacCleaner.app · Quét: mac-cleaner scan"

@@ -88,7 +88,24 @@ curl -fsSL https://raw.githubusercontent.com/KmSlime/mac-cleaner/develop/update.
 Nút **Cài đặt** ở cuối sidebar:
 
 - **Kiểm tra / Cập nhật:** hỏi GitHub bản phát hành mới nhất và cài nếu bạn bấm.
+- **Đang cài bản nào:** số phiên bản hiện ngay dưới tên app ở đầu sidebar (từ 1.11.0), trong Cài đặt (dòng *Đang dùng*) và ở menu **Mac Cleaner → Giới thiệu Mac Cleaner**.
 - **Tự kiểm tra theo lịch — mặc định TẮT, bạn phải tick đồng ý mới bật.** Chọn hằng ngày hoặc thứ Hai hằng tuần, vào giờ bạn đặt; chọn *chỉ thông báo* (mặc định) hoặc *tự cài*. Mỗi lần chạy là một request HTTPS tới `api.github.com` để đọc số phiên bản, không gửi dữ liệu nào của máy. Tắt lúc nào cũng được.
+
+### Lịch đang có trên máy (từ 1.11.0)
+
+Máy đã từng cài Mac Cleaner — hoặc có công cụ khác đặt lịch gọi Mac Cleaner — thì có thể vẫn còn lịch cũ đang chạy. Bản mới tự tìm các lịch đó (các LaunchAgent của riêng bạn trong `~/Library/LaunchAgents`) mỗi lần mở app và ngay sau khi cài; có lịch cũ thì nút Cài đặt đổi màu và app báo một lần.
+
+Trong **Cài đặt → Lịch đang có trên máy**, mỗi lịch hiện tên, giờ chạy, lệnh nó chạy và một nhãn:
+
+| Nhãn | Nghĩa là | **Sửa** làm gì |
+|---|---|---|
+| **bản đang cài** | Lịch đang chạy đúng script của bản bạn vừa cài | Đổi giờ chạy |
+| **script cũ** | Lịch trỏ tới bản Mac Cleaner khác, hoặc bản đó không còn | Thay bằng script của bản đang cài (đổi giờ nếu muốn) |
+| **công cụ khác** | Lịch chạy script của công cụ khác, công cụ đó gọi Mac Cleaner | Chỉ đổi được giờ chạy; lệnh của công cụ kia giữ nguyên |
+
+- **Sửa** lịch tự kiểm tra bản mới của chính Mac Cleaner: bản đang cài viết lại toàn bộ lịch đó.
+- **Xoá** (bấm hai lần để xác nhận): launchd ngừng chạy lịch, file lịch vào Thùng rác — lấy lại được. Sau đó máy không còn lịch nào cho tới khi bạn đặt lịch mới ở phần *Tự kiểm tra theo lịch* ngay phía trên.
+- Lịch của công cụ khác là của công cụ đó: xoá hay đổi giờ ở đây thì công cụ kia có thể tạo lại hoặc chạy khác đi.
 
 ### Cài bằng `install.sh` (có lệnh `mac-cleaner`)
 
@@ -98,6 +115,10 @@ mac-cleaner self-update apply                 # xem trước các bước, chưa
 mac-cleaner self-update apply --yes           # cập nhật cả lệnh mac-cleaner lẫn app
 mac-cleaner self-update auto on --every weekly --at 09:00 --yes    # tự kiểm tra theo lịch (thêm --install để tự cài)
 mac-cleaner self-update auto off              # gỡ lịch
+mac-cleaner self-update schedule list         # các lịch chạy Mac Cleaner đang có trên máy
+mac-cleaner self-update schedule edit <nhãn> [--every daily|weekly] [--at HH:MM] [--yes]   # trỏ về bản đang cài / đổi giờ
+mac-cleaner self-update schedule remove <nhãn> [--yes]                                    # xoá lịch (file vào Thùng rác)
+mac-cleaner --version                         # đang cài bản nào
 ```
 
 Sau khi cập nhật, macOS có thể hỏi lại vài quyền (Full Disk Access, Automation) vì app ký ad-hoc.
@@ -158,7 +179,7 @@ Phía dưới dashboard là một **terminal thật**: kéo thanh chia để đ�
 
 ### Cài đặt
 
-Nút **Cài đặt** ở cuối sidebar gồm hai phần: **Cập nhật** ([mục 2](#2-cập-nhật)) và **Quyền quản trị** ([mục 6](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được)).
+Nút **Cài đặt** ở cuối sidebar gồm hai phần: **Cập nhật** — phiên bản đang cài, kiểm tra/cài bản mới, lịch tự kiểm tra và các lịch đang có trên máy ([mục 2](#2-cập-nhật)) — và **Quyền quản trị** ([mục 6](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được)).
 
 ---
 
@@ -294,7 +315,7 @@ Cài plugin (Cách 2 hoặc Cách 3 ở [mục 1](#1-cài-đặt)) rồi nhờ C
 
 **Claude luôn phải hỏi bạn trước khi làm thật.** Plugin có hook xin duyệt: trước mọi lệnh thay đổi máy, Claude Code **phải hỏi bạn duyệt**, kể cả ở auto mode. Lệnh xem trước chạy bình thường. Hook không chặn cứng: bạn luôn là người quyết.
 
-Những lệnh phải duyệt: `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`, `maintain run … --yes`, `self-update apply … --yes`, `self-update auto on … --yes`, `admin grant|revoke … --yes`, lệnh đụng tới Thùng rác, và `mo clean|purge|uninstall|optimize|installer` không kèm `--dry-run` (nếu bạn tự cài Mole).
+Những lệnh phải duyệt: `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`, `maintain run … --yes`, `self-update apply … --yes`, `self-update auto on … --yes`, `self-update schedule edit|remove … --yes`, `admin grant|revoke … --yes`, lệnh đụng tới Thùng rác, và `mo clean|purge|uninstall|optimize|installer` không kèm `--dry-run` (nếu bạn tự cài Mole).
 
 ---
 
@@ -305,6 +326,10 @@ Những lệnh phải duyệt: `mac-cleaner clean|uninstall … --yes`, `startup
 **Dọn xong sao dung lượng trống chưa tăng?** Mục vừa dọn còn nằm trong Thùng rác; đổ Thùng rác mới lấy lại dung lượng. Dung lượng hiện lúc quét là ước lượng; con số thật xem trước/sau khi dọn (app và dòng lệnh đều in).
 
 **Gõ lệnh `self-update` báo lỗi "invalid choice"?** App đang cài cũ hơn 1.10.0. Dùng lệnh một dòng ở [mục 2](#2-cập-nhật) — chạy được với mọi phiên bản.
+
+**Đang cài bản nào?** Xem dưới tên app ở đầu sidebar, hoặc menu **Mac Cleaner → Giới thiệu Mac Cleaner**; dòng lệnh: `mac-cleaner --version`. Bản cũ hơn 1.11.0 chưa hiện số này ở sidebar — cập nhật bằng lệnh một dòng ở [mục 2](#2-cập-nhật).
+
+**Cài bản mới rồi mà lịch cũ vẫn chạy?** Mở **Cài đặt → Lịch đang có trên máy**: bấm **Sửa** để lịch chạy script của bản mới, hoặc **Xoá** rồi đặt lịch mới ([mục 2](#lịch-đang-có-trên-máy-từ-1110)).
 
 **Cập nhật xong macOS hỏi lại quyền?** App ký ad-hoc nên sau khi thay app, macOS có thể hỏi lại Full Disk Access, Automation.
 

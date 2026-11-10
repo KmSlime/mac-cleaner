@@ -82,6 +82,23 @@ class UpdateScript(unittest.TestCase):
         self.assertEqual(version_of(self.app), NEXT)
         self.assertEqual(self.trash(), [])
 
+    def test_names_the_schedules_that_run_mac_cleaner(self):
+        r = self.run_update()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("lịch", r.stdout)   # no LaunchAgents at all
+        agents = os.path.join(self.home, "Library", "LaunchAgents")
+        os.makedirs(agents)
+        for label, args, fmt in (("local.maccleaner.clean", ["/usr/bin/python3", "/old/maccleaner.py", "clean"], plistlib.FMT_BINARY),
+                                 ("com.example.backup", ["/usr/bin/rsync", "-a", "/a", "/b"], plistlib.FMT_XML)):
+            with open(os.path.join(agents, label + ".plist"), "wb") as f:
+                plistlib.dump({"Label": label, "ProgramArguments": args, "StartInterval": 3600}, f, fmt=fmt)
+        shutil.rmtree(self.app)
+        make_app(self.app, "1.2.0")
+        r = self.run_update()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("lịch chạy Mac Cleaner: local.maccleaner.clean.", r.stdout)
+        self.assertNotIn("com.example.backup", r.stdout)
+
     def test_app_at_a_given_path(self):
         other = os.path.join(self.home, "Tools", "MacCleaner.app")
         make_app(other, "1.5.0")

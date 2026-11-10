@@ -92,7 +92,7 @@ class Fake:
 
     def trash(self, path):
         self.trashed.append(path)
-        shutil.rmtree(path)
+        shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
         return None
 
 
@@ -247,6 +247,125 @@ class Schedule(unittest.TestCase):
             self.assertEqual((os.path.exists(SU.agent_path(f.env)), SU.status(f.env)["auto"]), (False, False))
 
 
+def put_agent(f, label, args, **extra):
+    """A LaunchAgent plist in the fake home, as an older install or another tool would have left it."""
+    folder = os.path.dirname(SU.agent_path(f.env))
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, label + ".plist")
+    with open(path, "wb") as fh:
+        plistlib.dump({"Label": label, "ProgramArguments": args, **extra}, fh)
+    return path
+
+
+def read(path):
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+class Existing(unittest.TestCase):
+    OLD = ["/usr/bin/python3", "/old/place/maccleaner.py", "clean", "--yes"]
+
+    def test_finds_own_old_and_external_and_nothing_else(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Fake(d)
+            self.assertEqual(SU.schedules(f.env), [])   # no LaunchAgents folder yet
+            SU.auto_on(f.env, "weekly", "08:30", yes=True)
+            put_agent(f, "local.maccleaner.clean", self.OLD, StartCalendarInterval={"Hour": 3, "Minute": 0})
+            put_agent(f, "com.example.tidy", ["/usr/bin/python3", "/opt/tidy/run"], StartInterval=7200,
+                      EnvironmentVariables={"MACCLEANER_DATA": "/x"})
+            put_agent(f, "com.example.mine", ["/usr/bin/env", "python3", os.path.join(f.root, "maccleaner.py"), "scan"], RunAtLoad=True)
+            put_agent(f, "com.example.backup", ["/usr/bin/rsync", "-a", "/a", "/b"], StartInterval=60)
+            folder = os.path.dirname(SU.agent_path(f.env))
+            with open(os.path.join(folder, "junk.plist"), "w") as fh:
+                fh.write("mac-cleaner but not a plist")
+            os.symlink(os.path.join(folder, "local.maccleaner.clean.plist"), os.path.join(folder, "link.plist"))
+            got = {s["label"]: (s["own"], s["state"], s["when"], s["every"], s["at"]) for s in SU.schedules(f.env)}
+            self.assertEqual(got, {
+                SU.LABEL: (True, "current", "thứ Hai hằng tuần lúc 08:30", "weekly", "08:30"),
+                "local.maccleaner.clean": (False, "old", "hằng ngày lúc 03:00", "daily", "03:00"),
+                "com.example.tidy": (False, "external", "mỗi 2 giờ", None, None),
+                "com.example.mine": (False, "current", "khi đăng nhập", None, None)})
+            self.assertEqual(SU.status(f.env)["schedules"], SU.schedules(f.env))
+
+    def test_own_schedule_of_another_install_is_old_until_edited(self):
+        with tempfile.TemporaryDirectory() as d:
+            f, before = Fake(os.path.join(d, "new")), Fake(os.path.join(d, "before"))
+            os.makedirs(os.path.dirname(SU.agent_path(f.env)))
+            with open(SU.agent_path(f.env), "wb") as fh:
+                plistlib.dump(SU.build_agent(before.env, "daily", "07:15"), fh)
+            self.assertEqual([(s["own"], s["state"]) for s in SU.schedules(f.env)], [(True, "old")])
+            self.assertEqual(SU.schedule_edit(f.env, SU.LABEL)["status"], "preview")
+            self.assertEqual(SU.schedules(f.env)[0]["state"], "old")
+            res = SU.schedule_edit(f.env, SU.LABEL, yes=True)
+            self.assertEqual((res["status"], res["every"], res["at"]), ("ok", "daily", "07:15"))   # the time it had is kept
+            self.assertEqual(plistlib.loads(read(SU.agent_path(f.env)))["ProgramArguments"][2], os.path.join(f.root, "maccleaner.py"))
+            self.assertEqual((SU.schedules(f.env)[0]["state"], SU.status(f.env)["auto"]), ("current", True))
+
+    def test_edit_points_the_script_at_this_install_and_can_change_the_time(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Fake(d)
+            path = put_agent(f, "local.maccleaner.clean", self.OLD, StartInterval=7200, RunAtLoad=True)
+            raw = read(path)
+            res = SU.schedule_edit(f.env, "local.maccleaner.clean", at="06:45")
+            self.assertEqual((res["status"], read(path), f.calls), ("preview", raw, []))
+            res = SU.schedule_edit(f.env, "local.maccleaner.clean", at="06:45", yes=True)
+            new = plistlib.loads(read(path))
+            self.assertEqual(new["ProgramArguments"], ["/usr/bin/python3", os.path.join(f.root, "maccleaner.py"), "clean", "--yes"])
+            self.assertEqual((new["StartCalendarInterval"], "StartInterval" in new, new["RunAtLoad"]), ({"Hour": 6, "Minute": 45}, False, True))
+            self.assertEqual([c[1] for c in f.calls], ["bootout", "bootstrap"])
+            self.assertEqual((res["status"], SU.schedules(f.env)[0]["state"]), ("ok", "current"))
+
+    def test_edit_without_a_change_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Fake(d)
+            path = put_agent(f, "com.example.tidy", ["/opt/tidy/run"], StartInterval=7200, EnvironmentVariables={"MACCLEANER_DATA": "/x"})
+            raw = read(path)
+            with self.assertRaises(SU.UpdateError):
+                SU.schedule_edit(f.env, "com.example.tidy", yes=True)
+            self.assertEqual((read(path), f.calls), (raw, []))
+            SU.schedule_edit(f.env, "com.example.tidy", every="weekly", yes=True)   # another tool's job: only its time changes
+            new = plistlib.loads(read(path))
+            self.assertEqual((new["ProgramArguments"], new["StartCalendarInterval"]), (["/opt/tidy/run"], {"Hour": 9, "Minute": 0, "Weekday": 1}))
+
+    def test_edit_refused_by_launchd_puts_the_old_plist_back(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Fake(d)
+            path = put_agent(f, "local.maccleaner.clean", self.OLD, StartInterval=7200)
+            raw, f.fail = read(path), "bootstrap"
+            with self.assertRaises(SU.UpdateError):
+                SU.schedule_edit(f.env, "local.maccleaner.clean", yes=True)
+            self.assertEqual(read(path), raw)
+
+    def test_remove_sends_the_plist_to_the_trash_and_unloads_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Fake(d)
+            path = put_agent(f, "local.maccleaner.clean", self.OLD, StartInterval=7200)
+            self.assertEqual(SU.schedule_remove(f.env, "local.maccleaner.clean")["status"], "preview")
+            self.assertEqual((os.path.exists(path), f.trashed, f.calls), (True, [], []))
+            SU.schedule_remove(f.env, "local.maccleaner.clean", yes=True)
+            self.assertEqual((f.trashed, [c[1:] for c in f.calls]), ([path], [["bootout", f"gui/{os.getuid()}/local.maccleaner.clean"]]))
+            self.assertEqual(SU.schedules(f.env), [])
+
+    def test_remove_of_our_own_schedule_turns_auto_off(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Fake(d)
+            SU.auto_on(f.env, yes=True)
+            SU.schedule_remove(f.env, SU.LABEL, yes=True)
+            st = SU.status(f.env)
+            self.assertEqual((st["auto"], st["agent"], st["schedules"], f.trashed), (False, False, [], []))
+
+    def test_a_label_that_is_not_a_mac_cleaner_schedule_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Fake(d)
+            path = put_agent(f, "com.example.backup", ["/usr/bin/rsync", "-a", "/a", "/b"], StartInterval=60)
+            raw = read(path)
+            for act in (SU.schedule_remove, SU.schedule_edit):
+                for label in ("com.example.backup", "../../etc/hosts", ""):
+                    with self.subTest(act=act.__name__, label=label), self.assertRaises(SU.UpdateError):
+                        act(f.env, label, yes=True)
+            self.assertEqual((read(path), f.trashed, f.calls), (raw, [], []))
+
+
 class Run(unittest.TestCase):
     def test_off_means_no_request(self):
         with tempfile.TemporaryDirectory() as d:
@@ -283,6 +402,23 @@ class Cli(unittest.TestCase):
             self.assertEqual(SU.cli(args, env), 0)
         st = json.loads(out.getvalue())
         self.assertEqual((st["version"], st["auto"], st["last"]), (mclib.__version__, False, None))
+
+    def test_schedule_commands(self):
+        out, err = io.StringIO(), io.StringIO()
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            f = Fake(d)
+            path = put_agent(f, "local.maccleaner.clean", Existing.OLD, StartInterval=3600)
+            base = {"action": "schedule", "json": True, "every": None, "at": None}
+            self.assertEqual(SU.cli(type("A", (), {**base, "op": "list", "label": None, "yes": False})(), f.env), 0)
+            self.assertEqual([s["label"] for s in json.loads(out.getvalue())], ["local.maccleaner.clean"])
+            self.assertNotEqual(SU.cli(type("A", (), {**base, "op": "remove", "label": None, "yes": True})(), f.env), 0)
+            self.assertTrue(os.path.exists(path))
+            self.assertEqual(SU.cli(type("A", (), {**base, "op": "remove", "label": "local.maccleaner.clean", "yes": True})(), f.env), 0)
+            self.assertFalse(os.path.exists(path))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            mc.main(["self-update", "schedule", "purge"])
+        self.assertIn("invalid choice", err.getvalue())
 
     def test_registered_as_a_subcommand(self):
         err = io.StringIO()

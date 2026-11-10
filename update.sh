@@ -15,6 +15,19 @@ BUNDLE_ID="local.maccleaner"   # the same since the first release
 die() { echo "✗ $*" >&2; exit 1; }
 plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Contents/Info.plist" 2>/dev/null || true; }
 
+schedules_hint() {   # LaunchAgents that run mac-cleaner (an older install's, or another tool's): the app lists them in Settings
+  local f names=""
+  for f in "$HOME/Library/LaunchAgents"/*.plist; do
+    [ -f "$f" ] && [ ! -L "$f" ] || continue
+    if grep -qE 'maccleaner\.py|mac-cleaner|MacCleaner\.app|MACCLEANER_|local\.maccleaner\.' "$f" 2>/dev/null; then
+      names="${names:+$names, }$(basename "$f" .plist)"
+    fi
+  done
+  [ -n "$names" ] || return 0
+  echo "  Máy đang có lịch chạy Mac Cleaner: ${names}."
+  echo "  Mở app → Cài đặt → \"Lịch đang có trên máy\" để sửa (cho lịch chạy script của bản mới) hoặc xoá."
+}
+
 main() {   # everything runs inside a function, so a download cut off half-way (curl | bash) runs nothing
   local app="${1:-}" c old="" tag url ver name tmp want got new trash
   if [ -z "$app" ]; then
@@ -77,6 +90,7 @@ main() {   # everything runs inside a function, so a download cut off half-way (
   else
     echo "  Mở app: open \"$app\""
   fi
+  schedules_hint
 }
 
 main "$@"

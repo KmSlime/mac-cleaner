@@ -229,6 +229,9 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
 #stg .list { padding: 0; }
 #stg .li { align-items: flex-start; }
 #stg .li .n { white-space: normal; }
+#stg .li .acts { display: flex; flex-direction: column; gap: 6px; }
+#ver { font: 11px var(--mono); color: var(--faint); font-weight: 400; }
+.pill.old { color: var(--red); background: var(--red-soft); }
 .sform { display: grid; gap: 10px; margin: 14px 0; font-size: 13px; }
 .sform label { display: flex; align-items: center; gap: 10px; color: var(--dim); }
 .sform select, .sform input[type=time] { padding: 6px 10px; border: 1px solid var(--line2); border-radius: 9px; background: var(--card2); color: var(--text); font: inherit; }
@@ -319,7 +322,7 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
 <aside>
   <div class="logo">
     <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 19l4-9 4 6 2-3 3 6" fill="none" style="stroke:var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    mac cleaner
+    <span>mac cleaner<br><span id="ver" title="Phiên bản Mac Cleaner"></span></span>
   </div>
   <div class="label">Mục lục</div>
   <nav class="plist" id="plist"></nav>
@@ -517,6 +520,7 @@ function renderSide() {
   }
   $('#plist').innerHTML = h + renderFeatSide();
   $('#gen').textContent = fWhen(S.data.generatedAt);
+  if (!ST.upd && S.data.version) $('#ver').textContent = 'v' + S.data.version;   // static report: the version that wrote it
 }
 
 function renderHeader() {
@@ -1228,11 +1232,34 @@ function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('o
 function copy(t) { if (inApp()) post('copy:' + t); else navigator.clipboard?.writeText(t).catch(() => prompt('Copy:', t)); }
 // Settings (host only). The host answers every `selfupdate:{…}` / `admin:{…}` message with window.settings(kind, action, result);
 // the button stays hidden in hosts that never call it (static report, other embedders).
-const ST = { upd: null, adm: null, form: null, busy: '', confirm: false, err: {} };
+const ST = { upd: null, adm: null, form: null, busy: '', confirm: false, err: {}, sedit: null, sdel: '', told: false };
 const settingsOpen = () => $('#drawer').classList.contains('on') && !!$('#stg');
 const ask = (kind, o) => post(kind + ':' + JSON.stringify(o));
 const ADMIN_EXPLAIN = 'Cấp quyền = ghi một dòng cho mỗi lệnh vào /etc/sudoers.d/mac-cleaner: chỉ user này, đúng lệnh và tham số bên dưới, không lệnh nào khác. macOS hỏi mật khẩu quản trị một lần; Mac Cleaner không lưu mật khẩu ở đâu cả. Thu hồi bất cứ lúc nào.';
 const UPD_KIND = { source: 'bản clone git — cập nhật bằng git (fast-forward tới tag) rồi install.sh', app: 'app tải về — tải bản phát hành từ GitHub, kiểm SHA-256 và chữ ký, app cũ vào Thùng rác', other: 'không rõ kiểu cài — cập nhật tay từ trang phát hành' };
+// Schedules already on this machine (status.schedules): ours, one left by an older install, or another tool's job that runs mac-cleaner.
+const SCHED = { current: ['safe', 'bản đang cài'], old: ['old', 'script cũ'], external: ['', 'công cụ khác'] };
+const SCHED_NOTE = { old: 'Trỏ tới bản Mac Cleaner khác hoặc đã không còn — Sửa để lịch chạy script của bản đang cài.',
+  external: 'Lịch này chạy script của công cụ khác (công cụ đó gọi Mac Cleaner) — ở đây chỉ đổi được giờ chạy.' };
+function renderSchedules(u, off) {
+  const list = u.schedules || [], b = ST.busy;
+  if (!list.length) return '<div class="sub">Không có lịch nào của Mac Cleaner đang chạy trên máy.</div>';
+  return '<div class="list">' + list.map(s => {
+    const [cls, txt] = SCHED[s.state] || ['', s.state], ed = ST.sedit && ST.sedit.label === s.label ? ST.sedit : null, l = esc(s.label);
+    const same = ed && !ed.every && !s.own && s.state !== 'old';   // nothing would change
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(s.label))   // the host refuses such a label: show it, leave the action to the CLI
+      return `<div class="li"><div class="c"><div class="n">${l} <span class="pill ${cls}"><i></i>${txt}</span></div><div class="m" style="white-space:normal">${esc(s.when)} · nhãn có ký tự đặc biệt — sửa/xoá bằng dòng lệnh: self-update schedule edit|remove</div><div class="cmd">${esc(s.command)}</div></div></div>`;
+    return `<div class="li"><div class="c"><div class="n">${l} <span class="pill ${cls}"><i></i>${txt}</span></div>
+      <div class="m" style="white-space:normal">${esc(s.when)}${s.own ? ' · lịch tự kiểm tra bản mới' : ''}${SCHED_NOTE[s.state] && !s.own ? ' · ' + SCHED_NOTE[s.state] : s.own && s.state === 'old' ? ' · do bản cài khác tạo — Sửa để bản đang cài viết lại.' : ''}</div>
+      <div class="cmd">${esc(s.command)}</div>
+      ${ed ? `<div class="sform"><label>Giờ chạy <select id="scevery"><option value="" ${ed.every ? '' : 'selected'}>Giữ nguyên (${esc(s.when)})</option><option value="daily" ${ed.every === 'daily' ? 'selected' : ''}>Hằng ngày</option><option value="weekly" ${ed.every === 'weekly' ? 'selected' : ''}>Thứ Hai hằng tuần</option></select>
+        ${ed.every ? `lúc <input type="time" id="scat" value="${esc(ed.at)}">` : ''}</label>
+        <div class="sub">${s.own ? 'Mac Cleaner viết lại lịch này bằng script của bản đang cài; tới giờ nó tự kết nối GitHub để xem có bản mới không.' : s.state === 'external' ? 'Chỉ giờ chạy thay đổi; lệnh của công cụ kia giữ nguyên.' : 'Đường dẫn maccleaner.py trong lệnh được thay bằng script của bản đang cài; phần còn lại của lịch giữ nguyên.'}</div>
+        <div class="actions" style="margin:0"><button class="btn primary" data-sched="save" data-label="${l}" ${b || same ? 'disabled' : ''}>${b === 'sch:' + s.label ? 'Đang lưu…' : 'Lưu'}</button><button class="btn" data-sched="cancel" ${off}>Huỷ</button></div></div>` : ''}
+      ${ST.sdel === s.label ? `<div class="sub" style="margin-top:8px">Xoá: launchd ngừng chạy lịch này, file lịch vào Thùng rác.${s.own ? ' Muốn có lịch mới thì bật lại "Tự kiểm tra theo lịch" ở trên.' : ''}</div>` : ''}</div>
+      <div class="acts">${ed ? '' : `<button class="btn" data-sched="edit" data-label="${l}" ${off}>Sửa</button>`}<button class="btn danger-line" data-sched="remove" data-label="${l}" ${off}>${b === 'sch:' + s.label && !ed ? 'Đang xoá…' : ST.sdel === s.label ? 'Bấm lần nữa để xoá' : 'Xoá'}</button></div></div>`;
+  }).join('') + '</div>';
+}
 function renderSettings() {
   const u = ST.upd || {}, last = u.last, b = ST.busy, y = settingsOpen() ? $('#drawer').scrollTop : 0;
   const f = ST.form || (ST.form = { every: u.every || 'daily', at: u.at || '09:00', install: !!u.install, consent: false });
@@ -1265,6 +1292,8 @@ function renderSettings() {
     <div class="actions">${u.auto
       ? `<button class="btn" data-upd="on" ${off}>${b === 'on' ? 'Đang lưu…' : 'Lưu lịch'}</button><button class="btn danger-line" data-upd="off" ${off}>${b === 'off' ? 'Đang tắt…' : 'Tắt tự kiểm tra'}</button>`
       : `<button class="btn primary" data-upd="on" ${b || !f.consent ? 'disabled' : ''}>${b === 'on' ? 'Đang bật…' : 'Bật tự kiểm tra'}</button>`}</div>
+    <h3>Lịch đang có trên máy</h3>
+    ${renderSchedules(u, off)}
     <h2>Quyền quản trị</h2>
     ${ST.err.admin ? `<div class="warn">${esc(ST.err.admin)}</div>` : ''}
     <div class="note">${ADMIN_EXPLAIN}</div>
@@ -1275,15 +1304,20 @@ function renderSettings() {
   </div>`);
   $('#drawer').scrollTop = y;
 }
-window.openSettings = () => { ST.confirm = false; ST.form = null; renderSettings(); };
+window.openSettings = () => { ST.confirm = false; ST.form = null; ST.sedit = null; ST.sdel = ''; renderSettings(); };
 window.settings = (kind, action, res) => {
   const read = action === 'status' || action === 'list';
   const err = res && res.error ? (String(res.error).match(/Lỗi: ([^\n]*)\s*$/)?.[1] || String(res.error)) : '';
-  if (!read) { ST.busy = ''; ST.confirm = false; }
+  if (!read) { ST.busy = ''; ST.confirm = false; ST.sdel = ''; }
   ST.err[kind] = err;
   if (err) toast('Lỗi: ' + err);
   else if (kind === 'selfupdate') {
-    if (action === 'status') ST.upd = res;
+    if (action === 'status') {
+      ST.upd = res;
+      if (res.version) $('#ver').textContent = 'v' + res.version;
+      if (!ST.told && (res.schedules || []).some(s => s.state === 'old')) { ST.told = true; toast('Có lịch của bản Mac Cleaner cũ đang chạy — mở Cài đặt để sửa hoặc xoá'); }
+    }
+    else if (action === 'schedule-edit' || action === 'schedule-remove') { ST.sedit = null; ST.form = null; toast(action === 'schedule-edit' ? `Đã sửa lịch ${res.label}` : `Đã xoá lịch ${res.label}`); }
     else if (action === 'check') { if (ST.upd) ST.upd.last = res; toast(res.update ? `Có bản mới ${res.latest}` : `Đang ở bản mới nhất (${res.current})`); }
     else if (action === 'apply') toast(res.status !== 'ok' ? `Đang ở bản mới nhất (${res.version})` : `Đã cập nhật lên ${res.version} — ${res.kind === 'app' ? 'đang mở lại app…' : 'mở lại app để dùng bản mới'}`);
     else { ST.form = null; toast(action === 'on' ? 'Đã bật tự kiểm tra theo lịch' : 'Đã tắt tự kiểm tra'); }
@@ -1291,14 +1325,23 @@ window.settings = (kind, action, res) => {
   else toast(action === 'grant' ? 'Đã cấp quyền' : 'Đã thu hồi quyền');
   if (!read) ask(kind, { action: kind === 'admin' ? 'list' : 'status' });  // re-read the real state after every change, failed or not
   $('#stgbtn').hidden = false;
-  $('#stgbtn').classList.toggle('has', !!ST.upd?.last?.update);
+  $('#stgbtn').classList.toggle('has', !!ST.upd?.last?.update || (ST.upd?.schedules || []).some(s => s.state === 'old'));
   if (settingsOpen()) renderSettings();
   if (kind === 'admin' && action === 'list' && S.data && S.feat === 'maintain') draw();
 };
 document.addEventListener('click', e => {
-  const t = e.target.closest('#stgbtn,[data-upd],[data-adm]');
+  const t = e.target.closest('#stgbtn,[data-upd],[data-adm],[data-sched]');
   if (!t || t.disabled) return;
   if (t.id === 'stgbtn') return window.openSettings();
+  if (t.dataset.sched) {
+    const op = t.dataset.sched, label = t.dataset.label, s = (ST.upd?.schedules || []).find(x => x.label === label), ed = ST.sedit;
+    if (op === 'edit' && s) { ST.sedit = { label, every: '', at: s.at || '09:00' }; ST.sdel = ''; }
+    else if (op === 'cancel') ST.sedit = null;
+    else if (op === 'remove' && ST.sdel !== label) { ST.sdel = label; ST.sedit = null; }
+    else if (op === 'remove') { ST.busy = 'sch:' + label; ask('selfupdate', { action: 'schedule-remove', label }); }
+    else if (op === 'save' && ed) { ST.busy = 'sch:' + label; ask('selfupdate', ed.every ? { action: 'schedule-edit', label, every: ed.every, at: ed.at } : { action: 'schedule-edit', label }); }
+    return renderSettings();
+  }
   const a = t.dataset.upd, f = ST.form;
   if (a === 'apply' && !ST.confirm) { ST.confirm = true; return renderSettings(); }
   if (a) { ST.busy = a; ask('selfupdate', a === 'on' ? { action: a, every: f.every, at: f.at, install: f.install, consent: !!ST.upd?.auto || f.consent } : { action: a }); }
@@ -1306,6 +1349,11 @@ document.addEventListener('click', e => {
   renderSettings();
 });
 document.addEventListener('change', e => {
+  if (ST.sedit && (e.target.id === 'scevery' || e.target.id === 'scat')) {
+    if (e.target.id === 'scat') ST.sedit.at = e.target.value || ST.sedit.at;
+    else { ST.sedit.every = e.target.value; renderSettings(); }
+    return;
+  }
   const f = ST.form, id = e.target.id;
   if (!f || !['upevery', 'upat', 'upinstall', 'upconsent'].includes(id)) return;
   if (id === 'upevery') f.every = e.target.value;

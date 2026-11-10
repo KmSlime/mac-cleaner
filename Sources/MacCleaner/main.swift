@@ -173,7 +173,7 @@ func cleanArguments(report: String, payload: String) -> [String]? {
 
 /// Board payload `selfupdate:{"action":…}` or `admin:{"action":…,"ids":[…]}` → (action, maccleaner.py arguments).
 /// Turning the schedule on needs `"consent": true` (the board's checkbox). Ids are plain slugs; maccleaner.py checks
-/// them against its own allowlist. Malformed → nil.
+/// them against its own allowlist, and a schedule label against the LaunchAgents it found itself. Malformed → nil.
 func settingsArguments(kind: String, payload: String) -> (action: String, args: [String])? {
     guard let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
           let action = obj["action"] as? String else { return nil }
@@ -187,6 +187,21 @@ func settingsArguments(kind: String, payload: String) -> (action: String, args: 
               let at = obj["at"] as? String, matches(at, "^([01][0-9]|2[0-3]):[0-5][0-9]$") else { return nil }
         return (action, ["self-update", "auto", "on", "--every", every, "--at", at,
                          obj["install"] as? Bool == true ? "--install" : "--no-install", "--yes", "--json"])
+    case ("selfupdate", "schedule-edit"), ("selfupdate", "schedule-remove"):
+        // starts with a letter or digit: never read as an option
+        guard let label = obj["label"] as? String, matches(label, "^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$") else { return nil }
+        var a = ["self-update", "schedule", action == "schedule-edit" ? "edit" : "remove", label]
+        if action == "schedule-edit" {
+            if let every = obj["every"] as? String {
+                guard every == "daily" || every == "weekly" else { return nil }
+                a += ["--every", every]
+            }
+            if let at = obj["at"] as? String {
+                guard matches(at, "^([01][0-9]|2[0-3]):[0-5][0-9]$") else { return nil }
+                a += ["--at", at]
+            }
+        }
+        return (action, a + ["--yes", "--json"])
     case ("admin", "list"): return (action, ["admin", "list", "--json"])
     case ("admin", "grant"), ("admin", "revoke"):
         guard let ids = obj["ids"] as? [String], !ids.isEmpty, ids.allSatisfy({ matches($0, "^[a-z][a-z-]{1,30}$") }) else { return nil }
@@ -524,6 +539,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Giới thiệu Mac Cleaner", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quét lại", action: #selector(rescan), keyEquivalent: "r").target = self
         appMenu.addItem(withTitle: "Hiện/ẩn Terminal", action: #selector(toggleTerminal), keyEquivalent: "l").target = self
         appMenu.addItem(.separator())

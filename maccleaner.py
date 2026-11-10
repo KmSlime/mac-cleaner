@@ -27,6 +27,7 @@ if ROOT not in sys.path:  # `python3 -I` bỏ thư mục script khỏi sys.path;
     sys.path.append(ROOT)
 sys.dont_write_bytecode = True  # không ghi __pycache__ của mclib vào bundle .app đã ký (hay vào repo)
 
+import mclib  # noqa: E402
 from mclib import featclean, registry, safety  # noqa: E402
 # Rào an toàn + dọn nằm ở mclib/safety.py; giữ tên cũ ở đây cho test/caller.
 from mclib.safety import (  # noqa: E402,F401
@@ -529,7 +530,7 @@ def scan(log=print, features=None):
                                  registry.discover() if features is None else features)
     usage = shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/")
     log(f"✓ Quét xong: {len(items)} mục trong {time.time() - t0:.0f}s")
-    return dict(generatedAt=int(time.time() * 1000), host=os.uname().nodename, home=HOME,
+    return dict(generatedAt=int(time.time() * 1000), version=mclib.__version__, host=os.uname().nodename, home=HOME,
                 disk=dict(total=usage.total, used=usage.used, free=usage.free),
                 seconds=round(time.time() - t0, 1), items=items, features=feats)
 
@@ -591,6 +592,7 @@ def run_post_scan_hooks(report_json, out=sys.stdout, hook_dir=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--version", action="version", version=f"mac-cleaner {mclib.__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan", help="quét và ghi report")
     s.add_argument("--out", default=os.path.join(DATA, "reports"))
