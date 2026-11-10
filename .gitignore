@@ -2,6 +2,7 @@
 build/
 reports/
 logs/
+self-update.json
 __pycache__/
 .DS_Store
 *.png

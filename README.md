@@ -58,7 +58,10 @@ python3 maccleaner.py cloud                                 # iCloud/Dropbox/…
 python3 maccleaner.py startup list | disable|enable <label> [--yes]  # mục khởi động (LaunchAgent, login item)
 python3 maccleaner.py audit [--gatekeeper]                  # phần mềm bám trụ + chữ ký mã (mặc định offline)
 python3 maccleaner.py privacy list | reset <dịch vụ> <bundle id> [--yes]  # dấu vết trình duyệt, quyền TCC
-python3 maccleaner.py maintain list | run <tác vụ> [--yes]  # bảo trì cấp user; tác vụ cần sudo chỉ in lệnh
+python3 maccleaner.py maintain list | run <tác vụ> [--yes]  # bảo trì cấp user; tác vụ cần sudo chỉ in lệnh, trừ khi đã `admin grant`
+python3 maccleaner.py self-update status | check | apply [--yes]          # bản mới trên GitHub: xem, kiểm tra, cập nhật tay
+python3 maccleaner.py self-update auto on [--every daily|weekly] [--at HH:MM] [--install|--no-install] [--yes] | auto off
+python3 maccleaner.py admin list | grant <id>…|all [--yes] | revoke <id>…|all [--yes]  # quyền quản trị cấp một lần cho vài lệnh cố định
 
 swift run MacCleaner                             # app desktop: quét lại, chọn, xem trước, dọn ngay trong UI
 swift run MacCleaner --snapshot x.png            # render report mới nhất ra ảnh rồi thoát
@@ -124,6 +127,33 @@ App có **terminal thật** (PTY, [SwiftTerm](https://github.com/migueldeicaza/S
 
 Board không có view log riêng: khi nhúng trong Ciel Monitor, terminal SwiftTerm của Ciel Monitor nhận message `terminal`.
 
+## Cập nhật
+
+Nút **Cài đặt** (cuối sidebar của app) hoặc lệnh `self-update`:
+
+- **Kiểm tra / cập nhật tay:** `self-update check` hỏi GitHub bản phát hành mới nhất của repo này; `self-update apply` xem trước các bước, thêm `--yes` để cài.
+  Bản clone git: `git fetch --tags` rồi fast-forward tới đúng tag và chạy lại `install.sh` (từ chối khi còn thay đổi chưa commit).
+  App tải về: tải `MacCleaner-<bản>-macos-universal.zip` + `.sha256` từ bản phát hành, kiểm SHA-256, bundle id, số phiên bản và chữ ký; app cũ vào Thùng rác rồi mới đặt app mới vào chỗ cũ.
+- **Tự kiểm tra theo lịch — mặc định TẮT, phải đồng ý mới bật:** `self-update auto on --yes` (hoặc tick ô đồng ý trong Cài đặt) tạo LaunchAgent của user `local.maccleaner.selfupdate`, chạy hằng ngày hoặc thứ Hai hằng tuần vào giờ bạn chọn (`--every`, `--at`).
+  Mỗi lần chạy là một request HTTPS tới `api.github.com` để đọc số phiên bản, không gửi dữ liệu nào của máy. Mặc định chỉ thông báo khi có bản mới; `--install` cho phép tự cài. `self-update auto off` gỡ lịch.
+- Chỉ tải từ `github.com` / `api.github.com` / `*.githubusercontent.com` qua HTTPS. Cấu hình ở `<thư mục dữ liệu>/self-update.json`.
+
+## Quyền quản trị (cấp một lần, thu hồi được)
+
+Vài việc cần root: `sfltool dumpbtm` (đọc login item — macOS hỏi mật khẩu mỗi lần) và mấy tác vụ bảo trì. Thay vì hỏi mật khẩu mãi hay lưu mật khẩu, `admin grant <id> --yes` (hoặc nút **Cấp** trong Cài đặt) hiện hộp thoại quản trị của macOS **một lần** và ghi `/etc/sudoers.d/mac-cleaner`: mỗi lệnh một dòng `NOPASSWD`, chỉ cho user hiện tại, tham số cố định. Sau đó mac-cleaner chạy đúng lệnh đó qua `sudo -n`, không hỏi lại.
+
+| id | Lệnh được cấp | Tác dụng |
+|---|---|---|
+| `btm-read` | `sfltool dumpbtm` | đọc login item và mục chạy nền, chỉ đọc |
+| `dns-flush` | `dscacheutil -flushcache`, `killall -HUP mDNSResponder` | xoá cache DNS |
+| `purge-ram` | `purge` | giải phóng bộ nhớ đệm đĩa |
+| `spotlight-reindex` | `mdutil -E /` | đánh chỉ mục lại Spotlight |
+| `font-cache-system` | `atsutil databases -remove` | xoá cache font |
+
+- Không lưu mật khẩu ở đâu cả. Mật khẩu admin cất trong Keychain với "Always Allow" thì mọi tiến trình của user đọc được — tức là root cho mọi thứ, thay vì root cho đúng năm lệnh cố định ở trên.
+- File do root sở hữu (0440), được `visudo -c` kiểm trước khi cài. `admin revoke <id>|all --yes` gỡ; không còn quyền nào thì file bị xoá. `admin list` xem trạng thái.
+- Cố ý không cấp được: `tmutil deletelocalsnapshots <ngày>` (tham số tự do, không hoàn tác) và `periodic` (chạy script từ thư mục user có thể ghi).
+
 ## Nhúng vào app khác (giao thức host ↔ board)
 
 | Hướng | Gọi | Ý nghĩa |
@@ -133,20 +163,22 @@ Board không có view log riêng: khi nhúng trong Ciel Monitor, terminal SwiftT
 | host → board | `window.cleaned(result)` | JSON của `clean --json` |
 | host → board | `window.applyTheme({bg, surface, text, muted, accent, danger, ok, warn, info?, surface2?, line?, faint?, onAccent?, font?, mono?, scale?, dark})` | đồng bộ theme (màu hex `#rrggbb`); `applyTheme(null)` về theme mặc định. Không gọi → theme của mac-cleaner |
 | host → board | `window.openProposal()` | mở popup Đề xuất xoá |
+| host → board | `window.settings(kind, action, result)` | trả lời cho message `selfupdate:`/`admin:` (JSON của lệnh, hoặc `{"error": …}`). Nút Cài đặt chỉ hiện sau lần gọi đầu — host không hỗ trợ thì không gọi |
 | board → host | `scan` · `terminal` · `copy:<text>` · `reveal:<path>` · `clean:{"ids":[…],"mode":"trash"\|"permanent","yes":bool,"force":bool}` | qua `webkit.messageHandlers.cleaner` |
+| board → host | `selfupdate:{"action":"status"\|"check"\|"apply"\|"on"\|"off", "every", "at", "install", "consent"}` · `admin:{"action":"list"\|"grant"\|"revoke", "ids":[…]}` | ngăn Cài đặt; `on` cần `consent: true` |
 
 Chạy app với thư mục dữ liệu khác: `MACCLEANER_DATA=/đường/dẫn open -a ~/Applications/MacCleaner.app` (dùng chung biến với lệnh `mac-cleaner`).
 
 ## Hook xin duyệt (khi dùng qua Claude Code)
 
-Plugin có hook `PreToolUse`: trước khi agent chạy lệnh **làm thật** — `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`, `maintain run … --yes`, `mo clean|purge|uninstall|optimize|installer` (nếu bạn tự cài Mole) không kèm `--dry-run`, hay lệnh đụng tới Thùng rác — Claude Code **phải hỏi bạn duyệt**, kể cả ở auto mode. Lệnh xem trước chạy bình thường. Hook không chặn cứng: bạn luôn là người quyết.
+Plugin có hook `PreToolUse`: trước khi agent chạy lệnh **làm thật** — `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`, `maintain run … --yes`, `self-update apply … --yes`, `self-update auto on … --yes`, `admin grant|revoke … --yes`, `mo clean|purge|uninstall|optimize|installer` (nếu bạn tự cài Mole) không kèm `--dry-run`, hay lệnh đụng tới Thùng rác — Claude Code **phải hỏi bạn duyệt**, kể cả ở auto mode. Lệnh xem trước chạy bình thường. Hook không chặn cứng: bạn luôn là người quyết.
 
 ## Mức an toàn
 
 | Mức | Ý nghĩa | Ví dụ |
 |---|---|---|
-| `safe` | dọn không mất dữ liệu, app tự tạo lại | `~/Library/Caches/*` (cache của macOS `com.apple.*` để mức `review`), `~/Library/Logs/*`, cache trong Containers, DerivedData, simulator unavailable, backup cũ (đã có bản mới hơn), extension editor obsolete |
-| `review` | dọn được nhưng nên xem | build artifact (node_modules, Pods, .venv…; vừa dùng trong 7 ngày thì để `info`), cache tải lại rất lâu (`ms-playwright`, `JetBrains`), installer .dmg/.pkg/.xip, iOS DeviceSupport, Archives, `~/.cache/*`, bản extension cũ, leftover app (Containers, Preferences, `Application Support/<bundle id>` — chỉ khi không còn app, Spotlight cũng không thấy, và 30+ ngày không được ghi), LaunchAgent mồ côi (chương trình của nó không còn), `/Library/Caches` |
+| `safe` | dọn không mất dữ liệu, app tự tạo lại | `~/Library/Caches/*` (cache của macOS `com.apple.*` để mức `review`), `~/Library/Logs/*`, cache trong Containers, simulator unavailable, backup cũ (đã có bản mới hơn), extension editor obsolete |
+| `review` | dọn được nhưng nên xem | **Xcode DerivedData** (luôn được đề xuất, không bao giờ dọn tự động — lần build sau lâu hơn), build artifact (node_modules, Pods, .venv…; vừa dùng trong 7 ngày thì để `info`), cache tải lại rất lâu (`ms-playwright`, `JetBrains`), installer .dmg/.pkg/.xip, iOS DeviceSupport, Archives, `~/.cache/*`, bản extension cũ, leftover app (Containers, Preferences, `Application Support/<bundle id>` — chỉ khi không còn app, Spotlight cũng không thấy, và 30+ ngày không được ghi), LaunchAgent mồ côi (chương trình của nó không còn), `/Library/Caches` |
 | `info` | kiểm kê (xoá được khi chọn đích danh) | ứng dụng, plugin, extension đang dùng, git, backup mới nhất |
 | `protected` | không dọn tự động (chỉ khi chọn đích danh) | cache đang là dữ liệu sống: `~/Library/Caches/pypoetry` (virtualenv), `org.R-project.R` (renv), `com.apple.FontRegistry`, `com.apple.Spotlight`; Keychains, `~/.ssh`, `~/.gnupg`; **mọi thư mục trong `~/Library` ngoài** `Caches`, `Logs`, `Containers`, `Group Containers`, `Preferences`, `Developer` (dữ liệu ứng dụng, thư mục đồng bộ…); **mọi thư mục ẩn ở home ngoài** vùng cache `~/.cache`, `~/.npm`, `~/.gradle/caches` (dữ liệu, model, cấu hình của các tool) |
 
@@ -172,11 +204,12 @@ Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13
 | caches | `~/Library/{Caches,Logs}`, `~/Library/Containers/*/Data/Library/Caches`, `/Library/{Caches,Logs}`, Xcode DerivedData/DeviceSupport/Archives, `simctl list devices unavailable`, `~/.npm`, `~/.gradle/caches`, `~/.cache/*`… |
 | junk | build artifact khi đi qua `~`, installer trong Downloads/Desktop/Documents, file backup trên toàn volume Data (`find -x`, gom theo thư mục + tên gốc, giữ bản mtime mới nhất), Containers/Preferences không khớp bundle id nào đang cài, Thùng rác |
 
-Tính năng trong `mclib/features/` đọc thêm: `launchctl`/`sfltool dumpbtm` (khởi động — lệnh này hỏi mật khẩu admin nên kết quả được nhớ ở `~/Library/Application Support/MacCleaner/dumpbtm-cache.json`, chỉ hỏi lại khi CSDL login item của macOS đổi; xoá file để hỏi lại), `codesign -dv`/cờ quarantine (bám trụ), TCC.db của user (quyền), Spotlight `kMDItemLastUsedDate` (app lâu không mở), appcast Sparkle + `brew outdated --cask` + `softwareupdate -l` (cập nhật), `st_blocks`/`SF_DATALESS` (dung lượng, cloud). Đối chiếu với CleanMyMac: `docs/CLEANMYMAC-PARITY.md`.
+Tính năng trong `mclib/features/` đọc thêm: `launchctl`/`sfltool dumpbtm` (khởi động — lệnh này hỏi mật khẩu admin nên kết quả được nhớ ở `~/Library/Application Support/MacCleaner/dumpbtm-cache.json`, chỉ hỏi lại khi CSDL login item của macOS đổi; xoá file để hỏi lại; `admin grant btm-read --yes` để không hỏi nữa), `codesign -dv`/cờ quarantine (bám trụ), TCC.db của user (quyền), Spotlight `kMDItemLastUsedDate` (app lâu không mở), appcast Sparkle + `brew outdated --cask` + `softwareupdate -l` (cập nhật), `st_blocks`/`SF_DATALESS` (dung lượng, cloud). Đối chiếu với CleanMyMac: `docs/CLEANMYMAC-PARITY.md`.
 
 ## Giới hạn đã biết
 
-- Không dùng `sudo`: `/Library/Caches` của root và cache hệ thống có thể từ chối; Thùng rác cần Full Disk Access cho terminal để đo.
+- Không dùng `sudo` ngoài mấy lệnh cố định bạn đã tự cấp bằng `admin grant`: `/Library/Caches` của root và cache hệ thống có thể từ chối; Thùng rác cần Full Disk Access cho terminal để đo.
+- Tự cập nhật: app ở `~/Applications` và bản clone chứa lệnh `mac-cleaner` là hai bản cài riêng — cập nhật từ app chỉ thay app; `mac-cleaner self-update apply --yes` từ bản clone cập nhật cả hai (qua `install.sh`). App ký ad-hoc nên sau khi thay app, macOS có thể hỏi lại quyền (Full Disk Access, Automation).
 - "Leftover" dựa trên bundle id của app + plugin đang cài, nên vẫn có thể nhầm với helper/daemon → để mức `review`.
 - Dung lượng là ước lượng `du -sk` lúc quét; dung lượng thật giải phóng xem `df` trước/sau (CLI và app đều in).
 
@@ -187,7 +220,7 @@ maccleaner.py                  quét + dọn + xuất report (Python stdlib, có
 mclib/safety.py                rào an toàn dùng chung: vùng bảo vệ, chặn cứng SIP/thư mục gốc, app đang chạy, Thùng rác, log dọn
 mclib/featclean.py             nối `clean` với mục của tính năng (--ids, --category <tính năng>[:<kind>])
 mclib/registry.py              nạp tính năng từ mclib/features/ (lệnh con + report["features"]) — cách thêm: mclib/README.md
-mclib/features/                mỗi file một tính năng: status, junk, maintain, space (analyze/large), dupes, cloud, uninstall, updates, startup, persistence (audit), privacy
+mclib/features/                mỗi file một tính năng: status, junk, maintain, space (analyze/large), dupes, cloud, uninstall, updates, startup, persistence (audit), privacy, selfupdate (self-update), admin
 Web/board.html                 toàn bộ UI (HTML/CSS/JS thuần, offline) — dùng cho cả app và report tĩnh
 Sources/MacCleaner/main.swift  cửa sổ AppKit + WKWebView, cầu nối JS → maccleaner.py
 scripts/make-app.sh            đóng gói .app Universal (arm64 + x86_64; ARCHS="arm64" để build nhanh)

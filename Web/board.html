@@ -222,6 +222,16 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
 .trow.kid .bv { font-size: 12px; color: var(--faint); }
 .cmd { font: 12px var(--mono); color: var(--text); word-break: break-all; white-space: normal; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; margin-top: 6px; }
 .li .cmd { margin-top: 4px; }
+/* settings drawer (host only): self-update + admin grants */
+#stgbtn.has { color: var(--accent); }
+#stg h2 { margin-top: 26px; }
+#stg h3 { margin: 22px 0 8px; font-size: 14px; display: flex; align-items: center; gap: 10px; }
+#stg .list { padding: 0; }
+#stg .li { align-items: flex-start; }
+#stg .li .n { white-space: normal; }
+.sform { display: grid; gap: 10px; margin: 14px 0; font-size: 13px; }
+.sform label { display: flex; align-items: center; gap: 10px; color: var(--dim); }
+.sform select, .sform input[type=time] { padding: 6px 10px; border: 1px solid var(--line2); border-radius: 9px; background: var(--card2); color: var(--text); font: inherit; }
 .alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .alerts .warn { margin: 0; }
 .note { margin: 0 0 16px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: var(--card2); color: var(--dim); border: 1px solid var(--line); }
@@ -315,6 +325,9 @@ td.why { max-width: 0; width: 28%; overflow: hidden; text-overflow: ellipsis; co
   <nav class="plist" id="plist"></nav>
   <div class="foot">
     <div>Report<br><span id="gen" class="num"></span></div>
+    <button class="icon-btn" id="stgbtn" title="Cài đặt: cập nhật, quyền quản trị" aria-label="Cài đặt" hidden>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.5"/><circle cx="8" cy="17" r="2.5"/></svg>
+    </button>
     <button class="icon-btn" id="theme" title="Đổi giao diện sáng/tối" aria-label="Đổi giao diện sáng/tối">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
@@ -846,8 +859,10 @@ function panelCloud(r) {
     <span class="r">local ${fSize(x.localBytes)} · cloud ${fSize(x.cloudOnlyBytes)}</span></div>`).join('') || '<div class="empty">Không tìm thấy thư mục cloud</div>'}</div></section>`;
 }
 function panelMaintain(r) {
-  const t = r.summary?.maintenance || [];
-  const state = x => !x.available ? ['', 'không có trên máy'] : x.runnable ? ['safe', 'chạy được (user)'] : x.needsRoot ? ['protected', 'cần sudo'] : ['review', 'tự chạy'];
+  const have = new Set((ST.adm || []).filter(g => g.granted).map(g => g.id));
+  const t = (r.summary?.maintenance || []).map(x => { const granted = ST.adm ? have.has(x.task) : !!x.granted; return { ...x, granted, runnable: x.available && (granted || (x.runnable && !x.needsRoot)) }; });
+  const state = x => !x.available ? ['', 'không có trên máy'] : x.granted ? ['safe', 'chạy được (đã cấp quyền)'] : x.runnable ? ['safe', 'chạy được (user)']
+    : x.needsRoot ? ['protected', x.grantable ? 'cần sudo · cấp được ở Cài đặt' : 'cần sudo'] : ['review', 'tự chạy'];
   return `<section class="card fsec"><div class="box-head"><h3>Tác vụ bảo trì <span>${t.length}</span></h3><button class="btn" data-term>Mở Terminal</button></div>
     <div class="box-sub">Board KHÔNG tự chạy tác vụ nào. Copy lệnh rồi chạy trong Terminal (nút Mở Terminal).</div>
     <div class="list">${t.map(x => { const [c, l] = state(x), cmd = x.runnable ? mc(`maintain run ${sq(x.task)} --yes`) : x.command;
@@ -1211,6 +1226,94 @@ function drawer(h) { $('#drawer').innerHTML = h; $('#drawer').classList.add('on'
 const closeDrawer = () => { $('#drawer').classList.remove('on'); $('#veil').classList.remove('on'); };
 function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 2600); }
 function copy(t) { if (inApp()) post('copy:' + t); else navigator.clipboard?.writeText(t).catch(() => prompt('Copy:', t)); }
+// Settings (host only). The host answers every `selfupdate:{…}` / `admin:{…}` message with window.settings(kind, action, result);
+// the button stays hidden in hosts that never call it (static report, other embedders).
+const ST = { upd: null, adm: null, form: null, busy: '', confirm: false, err: {} };
+const settingsOpen = () => $('#drawer').classList.contains('on') && !!$('#stg');
+const ask = (kind, o) => post(kind + ':' + JSON.stringify(o));
+const ADMIN_EXPLAIN = 'Cấp quyền = ghi một dòng cho mỗi lệnh vào /etc/sudoers.d/mac-cleaner: chỉ user này, đúng lệnh và tham số bên dưới, không lệnh nào khác. macOS hỏi mật khẩu quản trị một lần; Mac Cleaner không lưu mật khẩu ở đâu cả. Thu hồi bất cứ lúc nào.';
+const UPD_KIND = { source: 'bản clone git — cập nhật bằng git (fast-forward tới tag) rồi install.sh', app: 'app tải về — tải bản phát hành từ GitHub, kiểm SHA-256 và chữ ký, app cũ vào Thùng rác', other: 'không rõ kiểu cài — cập nhật tay từ trang phát hành' };
+function renderSettings() {
+  const u = ST.upd || {}, last = u.last, b = ST.busy, y = settingsOpen() ? $('#drawer').scrollTop : 0;
+  const f = ST.form || (ST.form = { every: u.every || 'daily', at: u.at || '09:00', install: !!u.install, consent: false });
+  const off = b ? 'disabled' : '', can = last && last.update && u.kind !== 'other';
+  const grants = ST.adm || [];
+  drawer(`<div style="display:flex;align-items:center;gap:8px"><span style="color:var(--dim)">Cài đặt</span><span style="flex:1"></span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
+  <div id="stg">
+    <h2>Cập nhật</h2>
+    ${ST.err.selfupdate ? `<div class="warn">${esc(ST.err.selfupdate)}</div>` : ''}
+    <dl class="kv">
+      <dt>Đang dùng</dt><dd>${esc(u.version || '—')}</dd>
+      <dt>Bản mới nhất</dt><dd>${last && last.latest ? esc(last.latest) + (last.update ? ' — có bản mới' : ' — đang ở bản mới nhất') : last && last.error ? 'lần kiểm gần nhất lỗi: ' + esc(last.error) : 'chưa kiểm'}</dd>
+      <dt>Kiểm lúc</dt><dd>${last && last.checked_at ? fWhen(last.checked_at * 1000) : '—'}</dd>
+      <dt>Kiểu cài</dt><dd style="font-family:var(--sans);word-break:normal">${esc(UPD_KIND[u.kind] || '—')}</dd>
+    </dl>
+    <div class="actions">
+      <button class="btn" data-upd="check" ${off}>${b === 'check' ? 'Đang kiểm tra…' : 'Kiểm tra ngay'}</button>
+      ${can ? `<button class="btn primary" data-upd="apply" ${off}>${b === 'apply' ? 'Đang cập nhật…' : ST.confirm ? `Bấm lần nữa để cài ${esc(last.latest)}` : `Cập nhật lên ${esc(last.latest)}`}</button>` : ''}
+      ${last && last.update && last.url ? `<button class="btn" data-copy="${esc(last.url)}">Copy link bản phát hành</button>` : ''}
+    </div>
+    ${ST.confirm ? `<div class="sub" style="margin-top:10px">Sẽ cài bản ${esc(last?.latest)}: ${esc(UPD_KIND[u.kind] || '')}. Tiến độ hiện ở Terminal; ${u.kind === 'app' ? 'xong thì app tự mở lại' : 'xong thì mở lại app để dùng bản mới'}.</div>` : ''}
+    <h3>Tự kiểm tra theo lịch <span class="pill ${u.auto ? 'safe' : ''}"><i></i>${u.auto ? 'đang bật' : 'đang tắt'}</span></h3>
+    <div class="note">${esc(u.consent || '')}</div>
+    <div class="sform">
+      <label>Lịch <select id="upevery"><option value="daily" ${f.every === 'daily' ? 'selected' : ''}>Hằng ngày</option><option value="weekly" ${f.every === 'weekly' ? 'selected' : ''}>Thứ Hai hằng tuần</option></select>
+        lúc <input type="time" id="upat" value="${esc(f.at)}"></label>
+      <label><input type="checkbox" id="upinstall" ${f.install ? 'checked' : ''}> Tự cài khi có bản mới (bỏ tick: chỉ thông báo)</label>
+      ${u.auto ? '' : `<label><input type="checkbox" id="upconsent" ${f.consent ? 'checked' : ''}> Tôi đồng ý cho Mac Cleaner tự kết nối mạng theo lịch này</label>`}
+    </div>
+    <div class="actions">${u.auto
+      ? `<button class="btn" data-upd="on" ${off}>${b === 'on' ? 'Đang lưu…' : 'Lưu lịch'}</button><button class="btn danger-line" data-upd="off" ${off}>${b === 'off' ? 'Đang tắt…' : 'Tắt tự kiểm tra'}</button>`
+      : `<button class="btn primary" data-upd="on" ${b || !f.consent ? 'disabled' : ''}>${b === 'on' ? 'Đang bật…' : 'Bật tự kiểm tra'}</button>`}</div>
+    <h2>Quyền quản trị</h2>
+    ${ST.err.admin ? `<div class="warn">${esc(ST.err.admin)}</div>` : ''}
+    <div class="note">${ADMIN_EXPLAIN}</div>
+    <div class="list">${grants.map(g => `<div class="li"><div class="c"><div class="n">${esc(g.title)} <span class="pill ${g.granted ? 'safe' : ''}"><i></i>${g.granted ? 'đã cấp' : 'chưa cấp'}</span></div>
+      <div class="m">${esc(g.effect)}</div>${g.commands.map(c => `<div class="cmd">sudo ${esc(c)}</div>`).join('')}</div>
+      <button class="btn ${g.granted ? 'danger-line' : ''}" data-adm="${g.granted ? 'revoke' : 'grant'}" data-id="${esc(g.id)}" ${off}>${b === 'adm:' + g.id ? 'Đang chờ…' : g.granted ? 'Thu hồi' : 'Cấp'}</button></div>`).join('') || '<div class="empty">Không đọc được danh sách quyền</div>'}</div>
+    ${grants.some(g => g.granted) ? `<div class="actions" style="margin-top:14px"><button class="btn danger-line" data-adm="revoke" data-id="all" ${off}>Thu hồi tất cả</button></div>` : ''}
+  </div>`);
+  $('#drawer').scrollTop = y;
+}
+window.openSettings = () => { ST.confirm = false; ST.form = null; renderSettings(); };
+window.settings = (kind, action, res) => {
+  const read = action === 'status' || action === 'list';
+  const err = res && res.error ? (String(res.error).match(/Lỗi: ([^\n]*)\s*$/)?.[1] || String(res.error)) : '';
+  if (!read) { ST.busy = ''; ST.confirm = false; }
+  ST.err[kind] = err;
+  if (err) toast('Lỗi: ' + err);
+  else if (kind === 'selfupdate') {
+    if (action === 'status') ST.upd = res;
+    else if (action === 'check') { if (ST.upd) ST.upd.last = res; toast(res.update ? `Có bản mới ${res.latest}` : `Đang ở bản mới nhất (${res.current})`); }
+    else if (action === 'apply') toast(res.status !== 'ok' ? `Đang ở bản mới nhất (${res.version})` : `Đã cập nhật lên ${res.version} — ${res.kind === 'app' ? 'đang mở lại app…' : 'mở lại app để dùng bản mới'}`);
+    else { ST.form = null; toast(action === 'on' ? 'Đã bật tự kiểm tra theo lịch' : 'Đã tắt tự kiểm tra'); }
+  } else if (action === 'list') ST.adm = Array.isArray(res) ? res : [];
+  else toast(action === 'grant' ? 'Đã cấp quyền' : 'Đã thu hồi quyền');
+  if (!read) ask(kind, { action: kind === 'admin' ? 'list' : 'status' });  // re-read the real state after every change, failed or not
+  $('#stgbtn').hidden = false;
+  $('#stgbtn').classList.toggle('has', !!ST.upd?.last?.update);
+  if (settingsOpen()) renderSettings();
+  if (kind === 'admin' && action === 'list' && S.data && S.feat === 'maintain') draw();
+};
+document.addEventListener('click', e => {
+  const t = e.target.closest('#stgbtn,[data-upd],[data-adm]');
+  if (!t || t.disabled) return;
+  if (t.id === 'stgbtn') return window.openSettings();
+  const a = t.dataset.upd, f = ST.form;
+  if (a === 'apply' && !ST.confirm) { ST.confirm = true; return renderSettings(); }
+  if (a) { ST.busy = a; ask('selfupdate', a === 'on' ? { action: a, every: f.every, at: f.at, install: f.install, consent: !!ST.upd?.auto || f.consent } : { action: a }); }
+  else { ST.busy = 'adm:' + t.dataset.id; ask('admin', { action: t.dataset.adm, ids: [t.dataset.id] }); }
+  renderSettings();
+});
+document.addEventListener('change', e => {
+  const f = ST.form, id = e.target.id;
+  if (!f || !['upevery', 'upat', 'upinstall', 'upconsent'].includes(id)) return;
+  if (id === 'upevery') f.every = e.target.value;
+  if (id === 'upat') f.at = e.target.value || f.at;
+  if (id === 'upinstall') f.install = e.target.checked;
+  if (id === 'upconsent') { f.consent = e.target.checked; const b = $('[data-upd="on"]'); if (b) b.disabled = !f.consent || !!ST.busy; }
+});
+
 const scopeName = () => [S.cat ? catOf(S.cat).label : 'Tổng quan', S.kind && kindLabel(S.kind), S.owner, S.q.trim() && `“${S.q.trim()}”`].filter(Boolean).join(' › ');
 const itemsWhere = f => S.data.items.filter(f);
 

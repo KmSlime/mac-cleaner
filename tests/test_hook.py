@@ -19,13 +19,17 @@ class ConfirmCleanupHook(unittest.TestCase):
                   "python3 maccleaner.py clean --category junk --permanent --yes",
                   "mac-cleaner uninstall --yes com.example.app", "mac-cleaner startup --yes disable com.example.agent",
                   "mac-cleaner startup enable com.example.agent --yes", "mac-cleaner privacy reset Camera com.example.app --yes",
-                  "mac-cleaner maintain --yes run quicklook-cache", "mo clean", "ls ~/.Trash"]:
+                  "mac-cleaner maintain --yes run quicklook-cache", "mac-cleaner self-update apply --yes",
+                  "python3 maccleaner.py self-update auto on --every weekly --yes", "mac-cleaner admin grant btm-read --yes",
+                  "mac-cleaner admin --yes revoke all", "mo clean", "ls ~/.Trash"]:
             self.assertEqual(decide(c), "ask", c)
 
     def test_preview_commands_pass(self):
         for c in ["mac-cleaner scan", "mac-cleaner clean --ids a,b", "mac-cleaner uninstall com.example.app",
                   "mac-cleaner startup list --yes", "mac-cleaner privacy list --yes", "mac-cleaner maintain run quicklook-cache",
-                  "mac-cleaner status; echo --yes", "mo clean --dry-run"]:
+                  "mac-cleaner status; echo --yes", "mac-cleaner self-update apply", "mac-cleaner self-update check --yes",
+                  "mac-cleaner self-update auto on", "mac-cleaner self-update auto off --yes", "mac-cleaner admin list --yes",
+                  "mac-cleaner admin grant all", "mo clean --dry-run"]:
             self.assertIsNone(decide(c), c)
 
 

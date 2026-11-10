@@ -281,6 +281,19 @@ class AIModelCache(unittest.TestCase):
                          ("ai-model", "info", None))
         self.assertEqual((got["uv"]["safety"], got["uv"]["action"]), ("review", "trash"))
 
+    def test_xcode_deriveddata_is_proposed_but_never_in_the_automatic_tier(self):
+        old = mc.HOME
+        with tempfile.TemporaryDirectory(dir="/tmp") as h:
+            try:
+                mc.HOME = h
+                os.makedirs(os.path.join(h, "Library/Developer/Xcode/DerivedData/App-abc/Build"))
+                got = [i for i in mc.scan_caches() if i["kind"] == "xcode-deriveddata"]
+            finally:
+                mc.HOME = old
+        self.assertEqual([(i["name"], i["safety"], i["action"]) for i in got], [("App-abc", "review", "trash")])
+        self.assertEqual(mc.select(got), [])                                  # default clean (safe tier) leaves it alone
+        self.assertEqual(len(mc.select(got, include_review=True)), 1)         # still cleanable when the user asks
+
 
 if __name__ == "__main__":
     unittest.main()
