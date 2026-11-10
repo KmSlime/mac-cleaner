@@ -33,6 +33,8 @@ elif s="$(seg self-update)" && has "$s" "$YES" && has "$s" '(^|[[:space:]])apply
   reason="mac-cleaner sắp tự cập nhật (self-update apply --yes): tải bản mới từ GitHub và thay bản đang cài."
 elif s="$(seg self-update)" && has "$s" "$YES" && has "$s" '(^|[[:space:]])auto[[:space:]]+on([[:space:]]|$)'; then
   reason="mac-cleaner sắp bật tự kiểm tra bản mới theo lịch (self-update auto on --yes): tạo LaunchAgent, tự kết nối GitHub định kỳ — cần người dùng đồng ý."
+elif s="$(seg self-update)" && has "$s" "$YES" && has "$s" '(^|[[:space:]])schedule[[:space:]]+(edit|remove)([[:space:]]|$)'; then
+  reason="mac-cleaner sắp sửa/xoá một lịch chạy đang có trên máy (self-update schedule edit/remove --yes): ghi lại hoặc chuyển LaunchAgent vào Thùng rác."
 elif s="$(seg admin)" && has "$s" "$YES" && has "$s" '(^|[[:space:]])(grant|revoke)([[:space:]]|$)'; then
   reason="mac-cleaner sắp đổi quyền quản trị (admin grant/revoke --yes): sửa /etc/sudoers.d/mac-cleaner, macOS sẽ hỏi mật khẩu quản trị."
 elif printf '%s' "$cmd" | /usr/bin/grep -Eq '(^|[;&|[:space:]/"(])(mo|mole)[[:space:]]+(clean|purge|uninstall|optimize|installer|remove)\b' \

@@ -24,7 +24,7 @@ Mọi lệnh dưới đây **mặc định chỉ đọc / xem trước**; chỉ 
 | Phần mềm bám trụ + chữ ký mã | `audit [--gatekeeper]` | chỉ liệt kê (`--gatekeeper` gọi `spctl`, có thể hỏi mạng Apple) |
 | Dấu vết riêng tư (lịch sử/cookie/phiên trình duyệt, quyền TCC) | `privacy list` · `privacy reset <dịch vụ> <bundle id>` | `--yes` (`tccutil reset`, log `logs/privacy-*.jsonl`) |
 | Bảo trì (QuickLook, LaunchServices, snapshot TM…) | `maintain list` · `maintain run <tác vụ>` | `--yes`; tác vụ cần `sudo` **chỉ in lệnh** để người dùng tự chạy, trừ tác vụ người dùng đã cấp bằng `admin grant` |
-| Cập nhật mac-cleaner | `self-update status` · `self-update check` · `self-update apply` · `self-update auto on\|off [--every daily\|weekly] [--at HH:MM] [--install]` | `--yes`; lịch tự kiểm tra **mặc định tắt**, chỉ bật khi người dùng đồng ý cho tự kết nối mạng |
+| Cập nhật mac-cleaner | `self-update status` · `self-update check` · `self-update apply` · `self-update auto on\|off [--every daily\|weekly] [--at HH:MM] [--install]` · `self-update schedule list` · `self-update schedule edit\|remove <nhãn> [--every …] [--at HH:MM]` (lịch chạy mac-cleaner đang có trên máy, kể cả của bản cài cũ: sửa = trỏ về bản đang cài, xoá = file lịch vào Thùng rác) · `--version` | `--yes`; lịch tự kiểm tra **mặc định tắt**, chỉ bật khi người dùng đồng ý cho tự kết nối mạng |
 | Quyền quản trị cấp một lần (đọc login item không hỏi mật khẩu, vài tác vụ bảo trì) | `admin list` · `admin grant\|revoke <id>…\|all` | `--yes` → macOS hỏi mật khẩu quản trị **một lần** (người dùng tự nhập); ghi `/etc/sudoers.d/mac-cleaner`, không lưu mật khẩu |
 | Sức khoẻ máy (ổ, RAM/swap, CPU, pin, mạng, cảnh báo) | `status` | chỉ đọc |
 
@@ -45,7 +45,7 @@ Mole (`mo`) không còn là dependency. Nếu người dùng tự cài và muố
    - gỡ app: `uninstall <app> --yes`; tắt mục khởi động: `startup disable <label> --yes`; reset quyền: `privacy reset <dịch vụ> <bundle id> --yes`; bảo trì: `maintain run <tác vụ> --yes` — mỗi lệnh một mục người dùng đã chỉ đích danh.
 5. Đo lại `df`, báo số thật so với ước lượng, liệt kê mục `skip`/`error` và lý do.
 
-Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`uninstall`/`startup disable|enable`/`privacy reset`/`maintain run`/`self-update apply`/`self-update auto on`/`admin grant|revoke` kèm `--yes`, `mo` không `--dry-run`, đụng Thùng rác) — đó là chốt, không phải lỗi.
+Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`uninstall`/`startup disable|enable`/`privacy reset`/`maintain run`/`self-update apply`/`self-update auto on`/`self-update schedule edit|remove`/`admin grant|revoke` kèm `--yes`, `mo` không `--dry-run`, đụng Thùng rác) — đó là chốt, không phải lỗi.
 
 ## Hiểu đúng trước khi đề xuất xoá
 

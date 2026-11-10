@@ -6,10 +6,15 @@
   python3 maccleaner.py self-update auto on [--every daily|weekly] [--at HH:MM] [--install|--no-install] [--yes]
   python3 maccleaner.py self-update auto off
   python3 maccleaner.py self-update run                      what the schedule runs: check, then notify or install
+  python3 maccleaner.py self-update schedule list [--json]   schedules of mac-cleaner already on this machine
+  python3 maccleaner.py self-update schedule edit <label> [--every …] [--at HH:MM] [--yes]   point it at this install
+  python3 maccleaner.py self-update schedule remove <label> [--yes]
 
 Nothing here opens a connection unless the user asked: `check`/`apply` are explicit, and the scheduled check exists only
 after `auto on --yes` (consent is recorded in <data>/self-update.json; without --yes the command only explains).
 The schedule is one user LaunchAgent (no sudo). `auto off` removes it.
+`schedule` looks at ~/Library/LaunchAgents for agents that run mac-cleaner — the update check above, and any left by an
+older install or made by another tool — so a new install can show them, repoint them at its own script, or remove them.
 
 How an update is installed depends on where this copy lives:
   source  (git clone + install.sh)  git fetch --tags, fast-forward to the release tag, re-run install.sh
@@ -49,6 +54,10 @@ MAX_JSON = 1 << 20
 MAX_ZIP = 200 << 20
 EVERY = ("daily", "weekly")
 DEFAULTS = {"auto": False, "every": "daily", "at": "09:00", "install": False}
+SCRIPT = "maccleaner.py"
+REF_RE = re.compile(r"maccleaner\.py|mac-cleaner|MacCleaner\.app")   # a LaunchAgent argument that runs mac-cleaner
+STATES = {"current": "script của bản đang cài", "old": "script cũ (bản cài khác hoặc không còn)",
+          "external": "script của công cụ khác"}
 GIT, DITTO, CODESIGN, LAUNCHCTL, OSASCRIPT = ("/usr/bin/git", "/usr/bin/ditto", "/usr/bin/codesign", "/bin/launchctl",
                                               "/usr/bin/osascript")
 CONSENT = ("Bật tự kiểm tra nghĩa là bạn cho phép Mac Cleaner tự kết nối mạng theo lịch: mỗi lần một request HTTPS tới "
@@ -120,7 +129,7 @@ def status(env):
     cfg = load_config(env)
     return {"version": mclib.__version__, "kind": install_kind(env.root), "auto": bool(cfg["auto"]), "every": cfg["every"],
             "at": cfg["at"], "install": bool(cfg["install"]), "agent": os.path.exists(agent_path(env)),
-            "last": cfg.get("last"), "consent": CONSENT}
+            "last": cfg.get("last"), "consent": CONSENT, "schedules": schedules(env)}
 
 
 # ---------- network ----------
@@ -263,10 +272,16 @@ def build_agent(env, every, at):
         when["Weekday"] = 1
     log = os.path.join(env.data, "logs", "self-update.log")
     return {"Label": LABEL, "ProcessType": "Background", "StartCalendarInterval": when,
-            "ProgramArguments": ["/usr/bin/env", "python3", os.path.join(env.root, "maccleaner.py"), NAME, "run"],
+            "ProgramArguments": ["/usr/bin/env", "python3", os.path.join(env.root, SCRIPT), NAME, "run"],
             "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
                                      "MACCLEANER_DATA": env.data},
             "StandardOutPath": log, "StandardErrorPath": log}
+
+
+def _reload(env, label, path):
+    domain = f"gui/{os.getuid()}"
+    env.call([LAUNCHCTL, "bootout", f"{domain}/{label}"], timeout=30)  # reload when the schedule changed; absent → ignored
+    return env.call([LAUNCHCTL, "bootstrap", domain, path], timeout=30)
 
 
 def auto_on(env, every=None, at=None, install=None, yes=False):
@@ -281,9 +296,7 @@ def auto_on(env, every=None, at=None, install=None, yes=False):
     os.makedirs(os.path.join(env.data, "logs"), exist_ok=True)
     with open(path, "wb") as f:
         plistlib.dump(agent, f)
-    domain = f"gui/{os.getuid()}"
-    env.call([LAUNCHCTL, "bootout", f"{domain}/{LABEL}"], timeout=30)  # reload when the schedule changed; absent → ignored
-    rc, out = env.call([LAUNCHCTL, "bootstrap", domain, path], timeout=30)
+    rc, out = _reload(env, LABEL, path)
     if rc != 0:
         os.remove(path)
         raise UpdateError(f"launchd không nhận lịch (mã {rc}): {out[-200:]}")
@@ -302,6 +315,123 @@ def auto_off(env):
     cfg.pop("consent_at", None)
     save_config(env, cfg)
     return {"status": "ok", "agent": path}
+
+
+# ---------- schedules already on this machine ----------
+def _when(pl):
+    """Agent plist → (Vietnamese text, every, at); every/at only for the two shapes `auto on` writes."""
+    cal, sec = pl.get("StartCalendarInterval"), pl.get("StartInterval")
+    if isinstance(cal, dict) and set(cal) <= {"Hour", "Minute", "Weekday"} and all(
+            isinstance(cal.get(k), int) for k in ("Hour", "Minute")):
+        at, day = f"{cal['Hour']:02d}:{cal['Minute']:02d}", cal.get("Weekday")
+        if day is None:
+            return f"hằng ngày lúc {at}", "daily", at
+        if day == 1:
+            return f"thứ Hai hằng tuần lúc {at}", "weekly", at
+        return f"hằng tuần (ngày thứ {day} theo launchd) lúc {at}", None, at
+    if cal:
+        return "theo lịch riêng (StartCalendarInterval)", None, None
+    if isinstance(sec, int) and sec > 0:
+        return (f"mỗi {sec // 3600} giờ" if sec % 3600 == 0 else f"mỗi {sec // 60} phút" if sec >= 60 else f"mỗi {sec} giây"), None, None
+    return ("khi đăng nhập" if pl.get("RunAtLoad") else "không có giờ chạy"), None, None
+
+
+def schedules(env):
+    """User LaunchAgents that run mac-cleaner: our own update check, and any left by an older install or made by another
+    tool. state: current (runs this install's script) · old (another copy, or one that is gone) · external (the agent
+    runs another tool's script that drives mac-cleaner). Reads files only."""
+    folder = os.path.dirname(agent_path(env))
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return []
+    here, want, out = os.path.realpath(os.path.join(env.root, SCRIPT)), build_agent(env, "daily", "00:00"), []
+    for name in names:
+        path = os.path.join(folder, name)
+        if not name.endswith(".plist") or os.path.islink(path):
+            continue
+        try:
+            with open(path, "rb") as f:
+                pl = plistlib.load(f)
+        except Exception:   # unreadable or not a plist (plistlib raises several unrelated types) → not ours to show
+            continue
+        if not isinstance(pl, dict):
+            continue
+        label = str(pl.get("Label") or name[:-len(".plist")])
+        args = [str(a) for a in (pl.get("ProgramArguments") or [pl.get("Program") or ""])]
+        envv = pl.get("EnvironmentVariables") if isinstance(pl.get("EnvironmentVariables"), dict) else {}
+        own = label == LABEL
+        if not (own or label.startswith(BUNDLE_ID + ".") or any(REF_RE.search(a) for a in args)
+                or any(str(k).startswith("MACCLEANER_") for k in envv)):
+            continue
+        scripts = [a for a in args if os.path.basename(a) == SCRIPT]
+        if own:
+            same = all(pl.get(k) == want[k] for k in ("ProgramArguments", "EnvironmentVariables"))
+            state = "current" if same else "old"
+        elif scripts:
+            state = "current" if all(os.path.realpath(a) == here for a in scripts) else "old"
+        else:
+            state = "external"
+        text, every, at = _when(pl)
+        out.append({"label": label, "path": path, "own": own, "state": state, "when": text, "every": every, "at": at,
+                    "command": " ".join(args)})
+    return out
+
+
+def _schedule(env, label):
+    for s in schedules(env):
+        if s["label"] == label:
+            return s
+    raise UpdateError(f"không có lịch nào của Mac Cleaner mang nhãn {label!r} trong ~/Library/LaunchAgents")
+
+
+def schedule_edit(env, label, every=None, at=None, yes=False):
+    """Our own schedule is written again by this version (`auto on`). Any other one keeps its plist, except that its
+    maccleaner.py arguments point at this install and, when a time is given, its calendar changes."""
+    s = _schedule(env, label)
+    if s["own"]:
+        return {**auto_on(env, every or s["every"], at or s["at"], None, yes=yes), "label": label}
+    with open(s["path"], "rb") as f:
+        raw = f.read()
+    new, here = plistlib.loads(raw), os.path.join(env.root, SCRIPT)
+    if isinstance(new.get("ProgramArguments"), list):
+        new["ProgramArguments"] = [here if os.path.basename(str(a)) == SCRIPT else a for a in new["ProgramArguments"]]
+    if every or at:
+        cal = build_agent(env, every or s["every"] or DEFAULTS["every"], at or s["at"] or DEFAULTS["at"])
+        new.pop("StartInterval", None)
+        new["StartCalendarInterval"] = cal["StartCalendarInterval"]
+    if new == plistlib.loads(raw):
+        raise UpdateError("không có gì để sửa: " + ("lịch này chạy script của công cụ khác" if s["state"] == "external"
+                          else "lịch này đã dùng script của bản đang cài") + " — thêm --every/--at để đổi giờ chạy, hoặc xoá lịch")
+    plan = {"label": label, "agent": s["path"], "before": s["command"],
+            "after": " ".join(str(a) for a in new.get("ProgramArguments") or [new.get("Program") or ""]), "when": _when(new)[0]}
+    if not yes:
+        return {"status": "preview", **plan}
+    with open(s["path"], "wb") as f:
+        plistlib.dump(new, f)
+    rc, out = _reload(env, label, s["path"])
+    if rc != 0:
+        with open(s["path"], "wb") as f:
+            f.write(raw)
+        _reload(env, label, s["path"])
+        raise UpdateError(f"launchd không nhận lịch đã sửa (mã {rc}): {out[-200:]} — đã trả lịch về như cũ")
+    return {"status": "ok", **plan}
+
+
+def schedule_remove(env, label, yes=False):
+    """Our own schedule: `auto off`. Any other one: its plist goes to the Trash (recoverable) and launchd unloads it."""
+    s = _schedule(env, label)
+    plan = {"label": label, "agent": s["path"], "command": s["command"]}
+    if not yes:
+        return {"status": "preview", **plan}
+    if s["own"]:
+        auto_off(env)
+        return {"status": "ok", **plan}
+    err = env.trash(s["path"])
+    if err:
+        raise UpdateError(f"không chuyển được {s['path']} vào Thùng rác ({err}) — lịch còn nguyên")
+    env.call([LAUNCHCTL, "bootout", f"gui/{os.getuid()}/{label}"], timeout=30)
+    return {"status": "ok", **plan}
 
 
 def notify(env, text):
@@ -355,6 +485,15 @@ def _print_status(st):
         print(f"Lần kiểm gần nhất: {when} · "
               + (f"lỗi: {last['error']}" if last.get("error") else
                  f"có bản mới {last['latest']} ({last['url']})" if last.get("update") else f"mới nhất là {last.get('latest')}"))
+    if st.get("schedules"):
+        _print_schedules(st["schedules"])
+
+
+def _print_schedules(items):
+    print("Lịch của Mac Cleaner trên máy (sửa/xoá: self-update schedule edit|remove <nhãn>):" if items
+          else "Không có lịch nào của Mac Cleaner trên máy.")
+    for s in items:
+        print(f"  {s['label']} · {s['when']} · {STATES[s['state']]}\n      {s['command']}")
 
 
 def cli(args, env=None):
@@ -398,6 +537,25 @@ def cli(args, env=None):
             res = auto_off(env)
             if not as_json:
                 print(f"Đã tắt tự kiểm tra và gỡ {res['agent']}.")
+        elif args.action == "schedule" and args.op == "list":
+            res = schedules(env)
+            if not as_json:
+                _print_schedules(res)
+        elif args.action == "schedule":
+            if not args.label:
+                raise UpdateError("thiếu nhãn của lịch — xem danh sách: self-update schedule list")
+            if args.op == "edit":
+                res = schedule_edit(env, args.label, args.every, args.at, yes=args.yes)
+                if not as_json:
+                    print(f"{'Đã sửa' if args.yes else 'Sẽ sửa'} lịch {args.label} ({res.get('when') or res.get('at')}):"
+                          + (f"\n  trước: {res['before']}\n  sau  : {res['after']}" if "after" in res else
+                             f"\n  viết lại bằng script của bản đang cài: {res['agent']}")
+                          + ("" if args.yes else "\nChưa làm gì. Thêm --yes để làm thật."))
+            else:
+                res = schedule_remove(env, args.label, yes=args.yes)
+                if not as_json:
+                    print(f"{'Đã xoá' if args.yes else 'Sẽ xoá'} lịch {args.label}: {res['agent']}\n  {res['command']}"
+                          + ("\nMuốn có lịch mới: self-update auto on --yes" if args.yes else "\nChưa làm gì. Thêm --yes để làm thật."))
         else:
             return run(env, log=log)
     except UpdateError as e:
@@ -424,5 +582,12 @@ def register(subparsers):
     q.add_argument("--install", action=argparse.BooleanOptionalAction,
                    help="tự cài khi có bản mới; --no-install: chỉ báo (mặc định: giữ lựa chọn cũ, ban đầu là chỉ báo)")
     q.add_argument("--yes", action="store_true", help="đồng ý cho tự kết nối mạng theo lịch (không có: chỉ giải thích)")
+    q.add_argument("--json", action="store_true")
+    q = sp.add_parser("schedule", help="lịch của mac-cleaner đang có trên máy (cả lịch của bản cài cũ): xem, sửa, xoá")
+    q.add_argument("op", choices=("list", "edit", "remove"))
+    q.add_argument("label", nargs="?", help="nhãn LaunchAgent (xem `schedule list`)")
+    q.add_argument("--every", choices=EVERY, help="edit: đổi sang daily hoặc weekly (thứ Hai)")
+    q.add_argument("--at", help="edit: giờ chạy HH:MM")
+    q.add_argument("--yes", action="store_true", help="làm thật (không có: chỉ xem trước)")
     q.add_argument("--json", action="store_true")
     p.set_defaults(func=cli)

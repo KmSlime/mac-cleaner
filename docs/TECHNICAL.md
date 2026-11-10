@@ -194,6 +194,21 @@ Both read the latest GitHub release of this repository and only download over HT
   (`--every`, `--at`). Each run is one HTTPS request to `api.github.com` to read the version number; no machine data is
   sent. By default it only notifies; `--install` lets it install. `self-update auto off` removes the schedule.
 - Settings live in `<data>/self-update.json`.
+- **Schedules already on the machine** (since 1.11.0): `schedules(env)` reads the user's `~/Library/LaunchAgents/*.plist`
+  (regular files only, no symlinks) and keeps an agent when its label is `local.maccleaner.selfupdate` or starts with
+  `local.maccleaner.`, when a `ProgramArguments` element matches `maccleaner\.py|mac-cleaner|MacCleaner\.app`, or when
+  an `EnvironmentVariables` key starts with `MACCLEANER_`. Each one gets a state: `current` (runs this install's
+  `maccleaner.py`; for our own agent: arguments and environment equal what `build_agent` writes), `old` (another copy,
+  or one that is gone), `external` (another tool's script drives mac-cleaner). `self-update status --json` carries the
+  list as `schedules`, so the app shows it at every start; `install.sh` prints it and `update.sh` names the matching
+  plists after an install.
+  - `self-update schedule edit <label> [--every] [--at] --yes`: our own agent is written again by `auto on` (the time it
+    had is kept unless given). Any other agent keeps its plist, except that every `…/maccleaner.py` argument becomes
+    this install's script and, when a time is given, `StartCalendarInterval` replaces `StartInterval`. The agent is
+    reloaded (`launchctl bootout` + `bootstrap`); if launchd refuses, the original bytes are written back and reloaded.
+    Nothing to change (an `external` agent without a new time) is an error, not a silent success.
+  - `self-update schedule remove <label> --yes`: our own agent → `auto off`; any other → plist to the Trash, then
+    `launchctl bootout`. Only labels that `schedules(env)` returned are accepted. Without `--yes` both commands preview.
 
 **`update.sh` (repo root, any installed version)**
 
@@ -255,7 +270,7 @@ From then on mac-cleaner runs exactly that command through `sudo -n`.
 | host → board | `window.openProposal()` | open the proposal popup |
 | host → board | `window.settings(kind, action, result)` | answer to a `selfupdate:`/`admin:` message (the command's JSON, or `{"error": …}`). The Settings button appears only after the first call — a host without support simply never calls it |
 | board → host | `scan` · `terminal` · `copy:<text>` · `reveal:<path>` · `clean:{"ids":[…],"mode":"trash"\|"permanent","yes":bool,"force":bool}` | through `webkit.messageHandlers.cleaner` |
-| board → host | `selfupdate:{"action":"status"\|"check"\|"apply"\|"on"\|"off", "every", "at", "install", "consent"}` · `admin:{"action":"list"\|"grant"\|"revoke", "ids":[…]}` | the Settings drawer; `on` needs `consent: true` |
+| board → host | `selfupdate:{"action":"status"\|"check"\|"apply"\|"on"\|"off", "every", "at", "install", "consent"}` · `selfupdate:{"action":"schedule-edit"\|"schedule-remove", "label", "every"?, "at"?}` · `admin:{"action":"list"\|"grant"\|"revoke", "ids":[…]}` | the Settings drawer; `on` needs `consent: true`. `schedule-*` (since 1.11.0) act on one entry of `status.schedules`: the host validates `label` (`^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$`) and runs `self-update schedule edit\|remove <label> … --yes --json`. A host that does not implement them should answer `window.settings("selfupdate", action, {"error": …})` so the button is released |
 
 ## 11. Approval hook (Claude Code plugin)
 
@@ -264,7 +279,8 @@ a command that **really acts**, the hook answers "ask", so Claude Code must get 
 included:
 
 - `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`,
-  `maintain run … --yes`, `self-update apply … --yes`, `self-update auto on … --yes`, `admin grant|revoke … --yes`;
+  `maintain run … --yes`, `self-update apply … --yes`, `self-update auto on … --yes`, `self-update schedule edit|remove … --yes`,
+  `admin grant|revoke … --yes`;
 - `mo clean|purge|uninstall|optimize|installer` without `--dry-run` (when the user installed Mole themselves);
 - commands touching the Trash.
 
@@ -273,7 +289,9 @@ Preview commands pass through. The hook never hard-blocks: the decision always g
 ## 12. Releases
 
 - The version lives in one place, `mclib/__init__.py` (`__version__`); `scripts/make-app.sh` reads it and a test checks
-  that `.claude-plugin/plugin.json` matches.
+  that `.claude-plugin/plugin.json` matches. It is shown under the app name in the
+  board's sidebar (from `self-update status`; a static report shows the `version` field of the report, the version
+  that wrote it), in the About panel (`CFBundleShortVersionString`) and by `maccleaner.py --version`.
 - A release is an annotated tag `vX.Y.Z` on `develop` plus a GitHub Release. `main` is not kept in sync.
 - Assets, whose names both updaters depend on:
 
