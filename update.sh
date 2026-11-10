@@ -15,16 +15,15 @@ BUNDLE_ID="local.maccleaner"   # the same since the first release
 die() { echo "✗ $*" >&2; exit 1; }
 plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Contents/Info.plist" 2>/dev/null || true; }
 
-schedules_hint() {   # LaunchAgents that run mac-cleaner (an older install's, or another tool's): the app lists them in Settings
-  local f names=""
+schedules_hint() {   # Mac Cleaner's own LaunchAgents (label local.maccleaner.<name>), e.g. an older install's: the app lists them in Settings
+  local f label names=""
   for f in "$HOME/Library/LaunchAgents"/*.plist; do
     [ -f "$f" ] && [ ! -L "$f" ] || continue
-    if grep -qE 'maccleaner\.py|mac-cleaner|MacCleaner\.app|MACCLEANER_|local\.maccleaner\.' "$f" 2>/dev/null; then
-      names="${names:+$names, }$(basename "$f" .plist)"
-    fi
+    label="$(/usr/libexec/PlistBuddy -c "Print :Label" "$f" 2>/dev/null || true)"
+    case "$label" in "$BUNDLE_ID".?*) names="${names:+$names, }$label" ;; esac
   done
   [ -n "$names" ] || return 0
-  echo "  Máy đang có lịch chạy Mac Cleaner: ${names}."
+  echo "  Máy đang có lịch của Mac Cleaner: ${names}."
   echo "  Mở app → Cài đặt → \"Lịch đang có trên máy\" để sửa (cho lịch chạy script của bản mới) hoặc xoá."
 }
 

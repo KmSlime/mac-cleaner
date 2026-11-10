@@ -71,7 +71,7 @@ EOF
 chmod +x "$BIN/mac-cleaner"
 ok "$BIN/mac-cleaner (report: $DATA)"
 
-# --- 3b. Schedules that already run mac-cleaner on this machine (an older install's, or another tool's)
+# --- 3b. Mac Cleaner's own schedules already on this machine (label local.maccleaner.<name>), e.g. an older install's
 if scheds="$("$BIN/mac-cleaner" self-update schedule list 2>/dev/null)" && [ "$(printf '%s\n' "$scheds" | wc -l)" -gt 1 ]; then
   say "Lịch của Mac Cleaner đang có trên máy"
   printf '%s\n' "$scheds" | sed '1d'

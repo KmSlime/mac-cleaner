@@ -55,9 +55,9 @@ MAX_ZIP = 200 << 20
 EVERY = ("daily", "weekly")
 DEFAULTS = {"auto": False, "every": "daily", "at": "09:00", "install": False}
 SCRIPT = "maccleaner.py"
-REF_RE = re.compile(r"maccleaner\.py|mac-cleaner|MacCleaner\.app")   # a LaunchAgent argument that runs mac-cleaner
+OWN_PREFIX = BUNDLE_ID + "."   # a schedule is Mac Cleaner's only when its label carries this prefix
 STATES = {"current": "script của bản đang cài", "old": "script cũ (bản cài khác hoặc không còn)",
-          "external": "script của công cụ khác"}
+          "custom": "lệnh riêng (không gọi thẳng maccleaner.py)"}
 GIT, DITTO, CODESIGN, LAUNCHCTL, OSASCRIPT = ("/usr/bin/git", "/usr/bin/ditto", "/usr/bin/codesign", "/bin/launchctl",
                                               "/usr/bin/osascript")
 CONSENT = ("Bật tự kiểm tra nghĩa là bạn cho phép Mac Cleaner tự kết nối mạng theo lịch: mỗi lần một request HTTPS tới "
@@ -337,9 +337,10 @@ def _when(pl):
 
 
 def schedules(env):
-    """User LaunchAgents that run mac-cleaner: our own update check, and any left by an older install or made by another
-    tool. state: current (runs this install's script) · old (another copy, or one that is gone) · external (the agent
-    runs another tool's script that drives mac-cleaner). Reads files only."""
+    """User LaunchAgents that are Mac Cleaner's: the label is `local.maccleaner.<name>` — our own update check, and any
+    left by an older install. An agent with another label is never listed, whatever it runs. state: current (runs this
+    install's script) · old (another copy, or one that is gone) · custom (the command has no maccleaner.py argument,
+    e.g. it goes through the `mac-cleaner` wrapper). Reads files only."""
     folder = os.path.dirname(agent_path(env))
     try:
         names = sorted(os.listdir(folder))
@@ -359,10 +360,8 @@ def schedules(env):
             continue
         label = str(pl.get("Label") or name[:-len(".plist")])
         args = [str(a) for a in (pl.get("ProgramArguments") or [pl.get("Program") or ""])]
-        envv = pl.get("EnvironmentVariables") if isinstance(pl.get("EnvironmentVariables"), dict) else {}
         own = label == LABEL
-        if not (own or label.startswith(BUNDLE_ID + ".") or any(REF_RE.search(a) for a in args)
-                or any(str(k).startswith("MACCLEANER_") for k in envv)):
+        if not label.startswith(OWN_PREFIX):
             continue
         scripts = [a for a in args if os.path.basename(a) == SCRIPT]
         if own:
@@ -371,7 +370,7 @@ def schedules(env):
         elif scripts:
             state = "current" if all(os.path.realpath(a) == here for a in scripts) else "old"
         else:
-            state = "external"
+            state = "custom"
         text, every, at = _when(pl)
         out.append({"label": label, "path": path, "own": own, "state": state, "when": text, "every": every, "at": at,
                     "command": " ".join(args)})
@@ -401,7 +400,7 @@ def schedule_edit(env, label, every=None, at=None, yes=False):
         new.pop("StartInterval", None)
         new["StartCalendarInterval"] = cal["StartCalendarInterval"]
     if new == plistlib.loads(raw):
-        raise UpdateError("không có gì để sửa: " + ("lịch này chạy script của công cụ khác" if s["state"] == "external"
+        raise UpdateError("không có gì để sửa: " + ("lệnh của lịch này không gọi thẳng maccleaner.py" if s["state"] == "custom"
                           else "lịch này đã dùng script của bản đang cài") + " — thêm --every/--at để đổi giờ chạy, hoặc xoá lịch")
     plan = {"label": label, "agent": s["path"], "before": s["command"],
             "after": " ".join(str(a) for a in new.get("ProgramArguments") or [new.get("Program") or ""]), "when": _when(new)[0]}

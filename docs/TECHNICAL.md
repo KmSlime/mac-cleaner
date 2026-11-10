@@ -195,18 +195,20 @@ Both read the latest GitHub release of this repository and only download over HT
   sent. By default it only notifies; `--install` lets it install. `self-update auto off` removes the schedule.
 - Settings live in `<data>/self-update.json`.
 - **Schedules already on the machine** (since 1.11.0): `schedules(env)` reads the user's `~/Library/LaunchAgents/*.plist`
-  (regular files only, no symlinks) and keeps an agent when its label is `local.maccleaner.selfupdate` or starts with
-  `local.maccleaner.`, when a `ProgramArguments` element matches `maccleaner\.py|mac-cleaner|MacCleaner\.app`, or when
-  an `EnvironmentVariables` key starts with `MACCLEANER_`. Each one gets a state: `current` (runs this install's
-  `maccleaner.py`; for our own agent: arguments and environment equal what `build_agent` writes), `old` (another copy,
-  or one that is gone), `external` (another tool's script drives mac-cleaner). `self-update status --json` carries the
-  list as `schedules`, so the app shows it at every start; `install.sh` prints it and `update.sh` names the matching
-  plists after an install.
+  (regular files only, no symlinks) and keeps an agent only when its label starts with `local.maccleaner.` — the
+  identification every schedule made by Mac Cleaner carries (`local.maccleaner.selfupdate` is the update check). What
+  the agent runs is not a criterion: since 1.11.1 another tool's job that calls mac-cleaner is never listed, edited or
+  removed (1.11.0 also matched `ProgramArguments` and `MACCLEANER_*` environment keys). Each one gets a state:
+  `current` (runs this install's `maccleaner.py`; for our own agent: arguments and environment equal what
+  `build_agent` writes), `old` (another copy, or one that is gone), `custom` (no `maccleaner.py` argument, e.g. the
+  command goes through the `mac-cleaner` wrapper). `self-update status --json` carries the
+  list as `schedules`, so the app shows it at every start; `install.sh` prints it and `update.sh` names the agents
+  whose `Label` has that prefix after an install.
   - `self-update schedule edit <label> [--every] [--at] --yes`: our own agent is written again by `auto on` (the time it
     had is kept unless given). Any other agent keeps its plist, except that every `…/maccleaner.py` argument becomes
     this install's script and, when a time is given, `StartCalendarInterval` replaces `StartInterval`. The agent is
     reloaded (`launchctl bootout` + `bootstrap`); if launchd refuses, the original bytes are written back and reloaded.
-    Nothing to change (an `external` agent without a new time) is an error, not a silent success.
+    Nothing to change (a `custom` agent without a new time) is an error, not a silent success.
   - `self-update schedule remove <label> --yes`: our own agent → `auto off`; any other → plist to the Trash, then
     `launchctl bootout`. Only labels that `schedules(env)` returned are accepted. Without `--yes` both commands preview.
 

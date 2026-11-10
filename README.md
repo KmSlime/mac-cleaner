@@ -93,7 +93,7 @@ Nút **Cài đặt** ở cuối sidebar:
 
 ### Lịch đang có trên máy (từ 1.11.0)
 
-Máy đã từng cài Mac Cleaner — hoặc có công cụ khác đặt lịch gọi Mac Cleaner — thì có thể vẫn còn lịch cũ đang chạy. Bản mới tự tìm các lịch đó (các LaunchAgent của riêng bạn trong `~/Library/LaunchAgents`) mỗi lần mở app và ngay sau khi cài; có lịch cũ thì nút Cài đặt đổi màu và app báo một lần.
+Máy đã từng cài Mac Cleaner thì có thể vẫn còn lịch cũ đang chạy. Bản mới tự tìm các lịch **của chính Mac Cleaner** — LaunchAgent của riêng bạn trong `~/Library/LaunchAgents` có nhãn bắt đầu bằng `local.maccleaner.` — mỗi lần mở app và ngay sau khi cài; có lịch cũ thì nút Cài đặt đổi màu và app báo một lần.
 
 Trong **Cài đặt → Lịch đang có trên máy**, mỗi lịch hiện tên, giờ chạy, lệnh nó chạy và một nhãn:
 
@@ -101,11 +101,11 @@ Trong **Cài đặt → Lịch đang có trên máy**, mỗi lịch hiện tên,
 |---|---|---|
 | **bản đang cài** | Lịch đang chạy đúng script của bản bạn vừa cài | Đổi giờ chạy |
 | **script cũ** | Lịch trỏ tới bản Mac Cleaner khác, hoặc bản đó không còn | Thay bằng script của bản đang cài (đổi giờ nếu muốn) |
-| **công cụ khác** | Lịch chạy script của công cụ khác, công cụ đó gọi Mac Cleaner | Chỉ đổi được giờ chạy; lệnh của công cụ kia giữ nguyên |
+| **lệnh riêng** | Lệnh của lịch không gọi thẳng `maccleaner.py` (ví dụ gọi qua lệnh `mac-cleaner`) | Chỉ đổi được giờ chạy; lệnh giữ nguyên |
 
 - **Sửa** lịch tự kiểm tra bản mới của chính Mac Cleaner: bản đang cài viết lại toàn bộ lịch đó.
 - **Xoá** (bấm hai lần để xác nhận): launchd ngừng chạy lịch, file lịch vào Thùng rác — lấy lại được. Sau đó máy không còn lịch nào cho tới khi bạn đặt lịch mới ở phần *Tự kiểm tra theo lịch* ngay phía trên.
-- Lịch của công cụ khác là của công cụ đó: xoá hay đổi giờ ở đây thì công cụ kia có thể tạo lại hoặc chạy khác đi.
+- Lịch do công cụ khác đặt (nhãn không bắt đầu bằng `local.maccleaner.`) không hiện ở đây, kể cả khi nó gọi Mac Cleaner: Mac Cleaner không đọc lệnh, không sửa và không xoá lịch đó — quản lý nó ở chính công cụ kia. (Bản 1.11.0 từng liệt kê cả các lịch này; từ 1.11.1 thì không.)
 
 ### Cài bằng `install.sh` (có lệnh `mac-cleaner`)
 
