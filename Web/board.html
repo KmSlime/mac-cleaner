@@ -1237,10 +1237,10 @@ const settingsOpen = () => $('#drawer').classList.contains('on') && !!$('#stg');
 const ask = (kind, o) => post(kind + ':' + JSON.stringify(o));
 const ADMIN_EXPLAIN = 'Cấp quyền = ghi một dòng cho mỗi lệnh vào /etc/sudoers.d/mac-cleaner: chỉ user này, đúng lệnh và tham số bên dưới, không lệnh nào khác. macOS hỏi mật khẩu quản trị một lần; Mac Cleaner không lưu mật khẩu ở đâu cả. Thu hồi bất cứ lúc nào.';
 const UPD_KIND = { source: 'bản clone git — cập nhật bằng git (fast-forward tới tag) rồi install.sh', app: 'app tải về — tải bản phát hành từ GitHub, kiểm SHA-256 và chữ ký, app cũ vào Thùng rác', other: 'không rõ kiểu cài — cập nhật tay từ trang phát hành' };
-// Schedules already on this machine (status.schedules): ours, one left by an older install, or another tool's job that runs mac-cleaner.
-const SCHED = { current: ['safe', 'bản đang cài'], old: ['old', 'script cũ'], external: ['', 'công cụ khác'] };
+// Mac Cleaner's schedules already on this machine (status.schedules, label local.maccleaner.<name>): this install's or an older install's.
+const SCHED = { current: ['safe', 'bản đang cài'], old: ['old', 'script cũ'], custom: ['', 'lệnh riêng'] };
 const SCHED_NOTE = { old: 'Trỏ tới bản Mac Cleaner khác hoặc đã không còn — Sửa để lịch chạy script của bản đang cài.',
-  external: 'Lịch này chạy script của công cụ khác (công cụ đó gọi Mac Cleaner) — ở đây chỉ đổi được giờ chạy.' };
+  custom: 'Lệnh của lịch này không gọi thẳng maccleaner.py (ví dụ gọi qua lệnh mac-cleaner) — ở đây chỉ đổi được giờ chạy.' };
 function renderSchedules(u, off) {
   const list = u.schedules || [], b = ST.busy;
   if (!list.length) return '<div class="sub">Không có lịch nào của Mac Cleaner đang chạy trên máy.</div>';
@@ -1254,7 +1254,7 @@ function renderSchedules(u, off) {
       <div class="cmd">${esc(s.command)}</div>
       ${ed ? `<div class="sform"><label>Giờ chạy <select id="scevery"><option value="" ${ed.every ? '' : 'selected'}>Giữ nguyên (${esc(s.when)})</option><option value="daily" ${ed.every === 'daily' ? 'selected' : ''}>Hằng ngày</option><option value="weekly" ${ed.every === 'weekly' ? 'selected' : ''}>Thứ Hai hằng tuần</option></select>
         ${ed.every ? `lúc <input type="time" id="scat" value="${esc(ed.at)}">` : ''}</label>
-        <div class="sub">${s.own ? 'Mac Cleaner viết lại lịch này bằng script của bản đang cài; tới giờ nó tự kết nối GitHub để xem có bản mới không.' : s.state === 'external' ? 'Chỉ giờ chạy thay đổi; lệnh của công cụ kia giữ nguyên.' : 'Đường dẫn maccleaner.py trong lệnh được thay bằng script của bản đang cài; phần còn lại của lịch giữ nguyên.'}</div>
+        <div class="sub">${s.own ? 'Mac Cleaner viết lại lịch này bằng script của bản đang cài; tới giờ nó tự kết nối GitHub để xem có bản mới không.' : s.state === 'custom' ? 'Chỉ giờ chạy thay đổi; lệnh của lịch giữ nguyên.' : 'Đường dẫn maccleaner.py trong lệnh được thay bằng script của bản đang cài; phần còn lại của lịch giữ nguyên.'}</div>
         <div class="actions" style="margin:0"><button class="btn primary" data-sched="save" data-label="${l}" ${b || same ? 'disabled' : ''}>${b === 'sch:' + s.label ? 'Đang lưu…' : 'Lưu'}</button><button class="btn" data-sched="cancel" ${off}>Huỷ</button></div></div>` : ''}
       ${ST.sdel === s.label ? `<div class="sub" style="margin-top:8px">Xoá: launchd ngừng chạy lịch này, file lịch vào Thùng rác.${s.own ? ' Muốn có lịch mới thì bật lại "Tự kiểm tra theo lịch" ở trên.' : ''}</div>` : ''}</div>
       <div class="acts">${ed ? '' : `<button class="btn" data-sched="edit" data-label="${l}" ${off}>Sửa</button>`}<button class="btn danger-line" data-sched="remove" data-label="${l}" ${off}>${b === 'sch:' + s.label && !ed ? 'Đang xoá…' : ST.sdel === s.label ? 'Bấm lần nữa để xoá' : 'Xoá'}</button></div></div>`;
