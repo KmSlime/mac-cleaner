@@ -191,6 +191,7 @@ mclib/features/                mỗi file một tính năng: status, junk, maint
 Web/board.html                 toàn bộ UI (HTML/CSS/JS thuần, offline) — dùng cho cả app và report tĩnh
 Sources/MacCleaner/main.swift  cửa sổ AppKit + WKWebView, cầu nối JS → maccleaner.py
 scripts/make-app.sh            đóng gói .app Universal (arm64 + x86_64; ARCHS="arm64" để build nhanh)
+scripts/make-icon.swift        vẽ icon app (cùng dấu hiệu với logo của board) → assets/AppIcon.icns
 install.sh                     cài một lệnh: Command Line Tools, app, lệnh mac-cleaner, plugin Claude Code
 skills/mac-cleaner/           skill duy nhất: kiểm kê + dọn + theo dõi bằng mac-cleaner (plugin Claude Code, manifest ở .claude-plugin/)
 hooks/                         hook xin duyệt: Claude phải hỏi trước mọi lệnh làm thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
