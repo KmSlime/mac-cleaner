@@ -181,6 +181,12 @@ prints the summary table and the 5 largest NÊN XOÁ items, and writes everythin
 Both read the latest GitHub release of this repository and only download over HTTPS from `github.com` /
 `api.github.com` / `*.githubusercontent.com`.
 
+Python's requests (`self-update`, and the Sparkle appcasts of `updates`) go through `updates.urlopen`: the default trust
+store of the running Python plus the root bundle macOS ships (`/etc/ssl/cert.pem`). Since 1.11.2 — before that, a Python
+with an empty store (a python.org build on which "Install Certificates.command" was never run) failed every check with
+`CERTIFICATE_VERIFY_FAILED`. Certificates and host names are always verified. `update.sh` uses `curl`, which already
+trusts the system roots.
+
 **`self-update` (feature `mclib/features/selfupdate.py`, since 1.10.0)**
 
 - `self-update check` asks `api.github.com` for the latest release; `self-update apply` previews the steps, `--yes`

@@ -1,13 +1,14 @@
-"""Liệt kê bản cập nhật (CHỈ LIỆT KÊ, không cài): app dùng Sparkle, Homebrew cask, macOS.
+"""Lists available updates (LISTS ONLY, installs nothing): Sparkle apps, Homebrew casks, macOS.
 
-  python3 maccleaner.py updates [--offline] [--timeout GIÂY] [--json]
+  python3 maccleaner.py updates [--offline] [--timeout SECONDS] [--json]
   scan → report["features"]["updates"] = {"summary", "updates": [{app, current, latest, source, url, status, error}],
-                                          "items": [mục list-only cho app có bản mới]}
+                                          "items": [list-only entries for apps with a newer version]}
 
-Sparkle: đọc SUFeedURL trong Info.plist → tải appcast (urllib, timeout ngắn) → so CFBundleShortVersionString /
-CFBundleVersion. Homebrew: `brew outdated --cask --json=v2` (dữ liệu cục bộ, tắt auto-update). macOS: `softwareupdate -l`.
---offline: không mở kết nối mạng nào (không tải appcast, không chạy softwareupdate). `scan` luôn chạy offline.
-Lỗi mạng / feed hỏng → ghi `error` cho riêng app đó, không làm hỏng lệnh.
+Sparkle: read SUFeedURL from Info.plist → fetch the appcast (urllib, short timeout) → compare
+CFBundleShortVersionString / CFBundleVersion. Homebrew: `brew outdated --cask --json=v2` (local data, auto-update off).
+macOS: `softwareupdate -l`.
+--offline: opens no network connection (no appcast, no softwareupdate). `scan` always runs offline.
+Network error / broken feed → recorded as `error` for that app only; the command still succeeds.
 """
 import concurrent.futures
 import glob
@@ -15,6 +16,7 @@ import json
 import os
 import platform
 import re
+import ssl
 import subprocess
 import urllib.error
 import urllib.request
@@ -24,8 +26,8 @@ from mclib import registry, safety as S
 
 NAME = "updates"
 SPARKLE_NS = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
-TIMEOUT = 5            # giây cho mỗi appcast
-SWU_TIMEOUT = 60       # softwareupdate -l hỏi máy chủ Apple: 15–60 giây (đã đo); quá giờ → ghi lỗi
+TIMEOUT = 5            # seconds per appcast
+SWU_TIMEOUT = 60       # softwareupdate -l asks Apple's servers: 15–60 s (measured); timeout → recorded as an error
 BREW_TIMEOUT = 60
 MAX_FEED_BYTES = 4 * 1024 * 1024
 WORKERS = 8
@@ -39,7 +41,7 @@ def app_roots(home=None):
 
 
 def list_apps(roots):
-    """realpath các .app ở roots (cấp 1 và 2), không lặp."""
+    """realpath of the .app bundles under roots (levels 1 and 2), no duplicates."""
     seen, out = set(), []
     for r in roots:
         base = glob.escape(r)
@@ -51,13 +53,13 @@ def list_apps(roots):
     return out
 
 
-# ---------- so phiên bản ----------
+# ---------- version comparison ----------
 def vkey(v):
     return tuple(int(x) for x in re.findall(r"\d+", str(v or "")))
 
 
 def newer(latest, current):
-    """latest mới hơn current? So theo các nhóm số; thiếu số ở một bên → không kết luận (False)."""
+    """Is latest newer than current? Compares the groups of digits; no digits on one side → no verdict (False)."""
     a, b = vkey(latest), vkey(current)
     if not a or not b:
         return False
@@ -67,8 +69,8 @@ def newer(latest, current):
 
 # ---------- Sparkle ----------
 def parse_appcast(text):
-    """Appcast (RSS + namespace Sparkle) → bản ổn định mới nhất cho macOS {version, build, url, title} hoặc None.
-    Bỏ mục có <sparkle:channel> (beta…) và enclosure cho hệ khác. Từ chối DTD/ENTITY (XML độc)."""
+    """Appcast (RSS + Sparkle namespace) → latest stable release for macOS {version, build, url, title} or None.
+    Skips items with <sparkle:channel> (beta…) and enclosures for other systems. Refuses DTD/ENTITY (hostile XML)."""
     if re.search(r"<!(DOCTYPE|ENTITY)", text or "", re.I):
         raise ValueError("appcast có DTD/ENTITY — bỏ qua")
     root = ET.fromstring(text)
@@ -93,12 +95,32 @@ def parse_appcast(text):
     return best
 
 
+SYSTEM_CA = "/etc/ssl/cert.pem"  # root certificates shipped with macOS
+
+
+def tls_context():
+    """Python's default trust store plus the roots macOS ships. Some Python installs have an empty store (python.org
+    builds until "Install Certificates.command" is run), and then every HTTPS request fails with
+    CERTIFICATE_VERIFY_FAILED. Certificates and host names are still verified."""
+    ctx = ssl.create_default_context()
+    try:
+        ctx.load_verify_locations(cafile=SYSTEM_CA)
+    except (OSError, ssl.SSLError):  # no such file, or unreadable: the default store alone
+        pass
+    return ctx
+
+
+def urlopen(req, timeout=None):
+    """`urllib.request.urlopen` with `tls_context()`; every HTTP(S) request of this package goes through here."""
+    return urllib.request.urlopen(req, timeout=timeout, context=tls_context())  # noqa: S310 — callers check the scheme
+
+
 def fetch(url, timeout=TIMEOUT):
-    """Tải appcast qua http(s), tối đa MAX_FEED_BYTES. Lỗi → ném lỗi (người gọi ghi `error`)."""
+    """Fetches an appcast over http(s), at most MAX_FEED_BYTES. Errors are raised (the caller records `error`)."""
     if not re.match(r"^https?://", url or "", re.I):
         raise ValueError("feed không phải http(s)")
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 — đã chặn scheme ở trên
+    with urlopen(req, timeout=timeout) as r:  # scheme checked above
         data = r.read(MAX_FEED_BYTES + 1)
     if len(data) > MAX_FEED_BYTES:
         raise ValueError("appcast quá lớn")
@@ -106,7 +128,7 @@ def fetch(url, timeout=TIMEOUT):
 
 
 def sparkle_apps(roots):
-    """App có SUFeedURL http(s): [{app, path, bundle_id, current, build, feed}] (bỏ app của Apple)."""
+    """Apps with an http(s) SUFeedURL: [{app, path, bundle_id, current, build, feed}] (Apple's own apps skipped)."""
     out = []
     for p in list_apps(roots):
         info = S.plist(os.path.join(p, "Contents", "Info.plist"))
@@ -145,7 +167,7 @@ def check_sparkle(app, fetch=fetch, timeout=TIMEOUT, offline=False):
 
 # ---------- Homebrew ----------
 def _run(cmd, timeout, env=None):
-    """(mã thoát | None khi lỗi/quá giờ, stdout, stderr)."""
+    """(exit code | None on error/timeout, stdout, stderr)."""
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         return r.returncode, r.stdout or "", r.stderr or ""
@@ -160,7 +182,7 @@ def brew_path():
 
 
 def parse_brew(text):
-    """JSON của `brew outdated --cask --json=v2` → [{app, current, latest, source, ...}]."""
+    """JSON of `brew outdated --cask --json=v2` → [{app, current, latest, source, ...}]."""
     data = json.loads(text or "{}")
     out = []
     for c in data.get("casks", []):
@@ -173,7 +195,7 @@ def parse_brew(text):
 
 
 def brew_outdated(run=_run, brew=None):
-    """(hàng cập nhật, lỗi | None). Không có brew → ([], None)."""
+    """(update rows, error | None). No brew → ([], None)."""
     brew = brew or brew_path()
     if not brew:
         return [], None
@@ -189,7 +211,7 @@ def brew_outdated(run=_run, brew=None):
 
 # ---------- macOS ----------
 def parse_softwareupdate(text, current=""):
-    """Output `softwareupdate -l` (định dạng mới `* Label:` + `Title: …, Version: …` và định dạng cũ)."""
+    """Output of `softwareupdate -l` (new format `* Label:` + `Title: …, Version: …`, and the old one)."""
     out, label = [], None
     for line in (text or "").splitlines():
         s = line.strip()
@@ -198,7 +220,7 @@ def parse_softwareupdate(text, current=""):
             label = m.group(1).strip()
             continue
         m = re.match(r"^\*\s+(.+)$", s)
-        if m:                                  # định dạng cũ: "* <label>" rồi dòng "<title> (<version>), …"
+        if m:                                  # old format: "* <label>" then a line "<title> (<version>), …"
             label = m.group(1).strip()
             continue
         if not label:
@@ -226,9 +248,9 @@ def macos_updates(run=_run):
     return rows, None
 
 
-# ---------- gom ----------
+# ---------- gather ----------
 def gather(offline=False, timeout=TIMEOUT, roots=None, fetch=None, run=_run, brew=None, macos=True):
-    """{updates[], errors[], sparkle, offline}. Các nguồn chạy song song; mỗi lỗi chỉ ảnh hưởng nguồn/app của nó."""
+    """{updates[], errors[], sparkle, offline}. Sources run in parallel; an error only affects its own source/app."""
     fetch = fetch or globals()["fetch"]
     apps = sparkle_apps(roots or app_roots())
     errors = []

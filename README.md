@@ -327,6 +327,8 @@ Những lệnh phải duyệt: `mac-cleaner clean|uninstall … --yes`, `startup
 
 **Gõ lệnh `self-update` báo lỗi "invalid choice"?** App đang cài cũ hơn 1.10.0. Dùng lệnh một dòng ở [mục 2](#2-cập-nhật) — chạy được với mọi phiên bản.
 
+**Kiểm tra bản mới báo `CERTIFICATE_VERIFY_FAILED`?** Python trên máy không có sẵn bộ chứng chỉ gốc (hay gặp khi cài Python từ python.org mà chưa chạy *Install Certificates.command*). Từ 1.11.2 Mac Cleaner dùng thêm bộ chứng chỉ có sẵn của macOS nên không còn lỗi này. Bản cũ hơn không tự cập nhật trong app được — chạy lệnh một dòng ở [mục 2](#2-cập-nhật) một lần.
+
 **Đang cài bản nào?** Xem dưới tên app ở đầu sidebar, hoặc menu **Mac Cleaner → Giới thiệu Mac Cleaner**; dòng lệnh: `mac-cleaner --version`. Bản cũ hơn 1.11.0 chưa hiện số này ở sidebar — cập nhật bằng lệnh một dòng ở [mục 2](#2-cập-nhật).
 
 **Cài bản mới rồi mà lịch cũ vẫn chạy?** Mở **Cài đặt → Lịch đang có trên máy**: bấm **Sửa** để lịch chạy script của bản mới, hoặc **Xoá** rồi đặt lịch mới ([mục 2](#lịch-đang-có-trên-máy-từ-1110)).
