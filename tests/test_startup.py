@@ -278,6 +278,20 @@ class DumpBtmCache(unittest.TestCase):
         startup.dumpbtm(lambda cmd, timeout=30: (None, "", "timeout"), cache=self.cache, db_dir=self.db)
         self.assertFalse(os.path.exists(self.cache))
 
+    def test_granted_runs_through_sudo_and_forgets_an_old_refusal(self):
+        startup.dumpbtm(self.run_fake(rc=1, out=""), cache=self.cache, db_dir=self.db)  # refused before the grant
+        seen = []
+
+        def run(cmd, timeout=30):
+            seen.append(cmd)
+            return (0, "OUT", "") if cmd[0] == startup.SUDO else (1, "", "denied")
+        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db, sudo=True), (0, "OUT", ""))
+        self.assertEqual(seen, [[startup.SUDO, "-n", startup.SFLTOOL, "dumpbtm"]])
+        seen.clear()  # this command is not in the grant file → falls back to the plain call (macOS asks)
+        startup.dumpbtm(lambda cmd, timeout=30: (seen.append(cmd), (1, "", "sudo: a password is required"))[1],
+                        cache=None, db_dir=self.db, sudo=True)
+        self.assertEqual(seen, [[startup.SUDO, "-n", startup.SFLTOOL, "dumpbtm"], [startup.SFLTOOL, "dumpbtm"]])
+
     def test_no_cache_without_signature_or_path(self):
         run = self.run_fake()
         startup.dumpbtm(run, cache=None, db_dir=self.db)

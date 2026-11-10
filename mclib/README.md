@@ -68,6 +68,9 @@ tên app]` và/hoặc `lock_dir=<thư mục có SingletonLock>` để `clean` b�
 ## Luật an toàn bắt buộc
 
 1. **Không sudo**, không tắt SIP, không xin quyền admin. Thiếu quyền thì báo, không lách.
+   Ngoại lệ duy nhất: các lệnh cố định trong `features/admin.py` (`GRANTS`) mà **người dùng tự cấp** bằng `admin grant` — chạy qua
+   `sudo -n` (không bao giờ hiện hộp mật khẩu), không lưu mật khẩu. Thêm lệnh vào `GRANTS` chỉ khi: binary của Apple nằm dưới SIP,
+   toàn bộ tham số cố định, chỉ đọc hoặc lặp lại vô hại.
 2. **Mặc định xem trước.** Lệnh nào có thể xoá thì không xoá gì nếu thiếu `--yes`; `--force` chỉ cho mục chọn đích danh (`--ids`).
 3. **Ưu tiên Thùng rác**: xoá qua `safety.to_trash()` / `safety.clean()`; `permanent` chỉ khi Thùng rác không áp dụng được và phải để `review`.
 4. **Kiểm lại lúc xoá**, không tin report: gọi `safety.validate(it, force)`; cache của app đang chạy thì bỏ qua (`safety.cache_owner_running`).

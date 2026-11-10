@@ -46,15 +46,15 @@ class Contract(unittest.TestCase):
         self.assertEqual(M.available(t, fake_help, all_bins), (True, ""))
         self.assertFalse(M.available(t, lambda c, timeout=20: "Usage: qlmanage -h", all_bins)[0])  # tuỳ chọn đã bị bỏ
         self.assertFalse(M.available(t, fake_help, lambda n: None)[0])
-        lst = M.tasks(fake_help, lambda n: None)
+        lst = M.tasks(fake_help, lambda n: None, granted=set())
         self.assertFalse(any(x["runnable"] or x["available"] for x in lst))
         self.assertTrue(all("unavailable" in x for x in lst))
 
 
 class Run(unittest.TestCase):
-    def run_task(self, name, yes=False, rc=0):
+    def run_task(self, name, yes=False, rc=0, granted=()):
         rec, logs = Recorder(rc), []
-        code = M.run_task(name, yes, log=logs.append, runner=rec, run=fake_help, which=all_bins)
+        code = M.run_task(name, yes, log=logs.append, runner=rec, run=fake_help, which=all_bins, granted=set(granted))
         return code, rec.calls, "\n".join(logs)
 
     def test_unknown_root_and_print_only_never_execute(self):
@@ -65,6 +65,20 @@ class Run(unittest.TestCase):
         code, calls, out = self.run_task("font-cache-user", True)
         self.assertEqual((code, calls), (1, []))
         self.assertIn("atsutil databases -removeUser", out)
+
+    def test_granted_root_task_runs_through_sudo_n(self):
+        code, calls, out = self.run_task("dns-flush", granted=["dns-flush"])
+        self.assertEqual((code, calls), (0, []))  # still a preview without --yes
+        code, calls, _ = self.run_task("dns-flush", True, granted=["dns-flush"])
+        self.assertEqual(code, 0)
+        self.assertEqual(calls, [["/usr/bin/sudo", "-n", "/usr/bin/dscacheutil", "-flushcache"],
+                                 ["/usr/bin/sudo", "-n", "/usr/bin/killall", "-HUP", "mDNSResponder"]])
+        self.assertEqual(self.run_task("purge-ram", True, granted=["dns-flush"])[:2], (1, []))  # one grant, one task
+        self.assertIn("admin grant purge-ram", self.run_task("purge-ram", True)[2])
+        lst = {t["task"]: t for t in M.tasks(fake_help, all_bins, granted={"dns-flush"})}
+        self.assertTrue(lst["dns-flush"]["runnable"] and lst["dns-flush"]["granted"])
+        self.assertFalse(lst["purge-ram"]["runnable"])
+        self.assertFalse(lst["periodic"]["grantable"])
 
     def test_preview_then_yes(self):
         code, calls, out = self.run_task("quicklook-cache")
@@ -79,7 +93,7 @@ class Run(unittest.TestCase):
         def boom(cmd, **kw):
             raise subprocess.TimeoutExpired(cmd, 1)
         self.assertEqual(M.run_task("quicklook-cache", True, log=lambda *_: None, runner=boom, run=fake_help,
-                                    which=all_bins), 1)
+                                    which=all_bins, granted=set()), 1)
 
 
 class Cli(unittest.TestCase):

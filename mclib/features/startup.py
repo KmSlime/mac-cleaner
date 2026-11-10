@@ -16,10 +16,12 @@ import time
 from urllib.parse import unquote
 
 from mclib import registry, safety as S
+from mclib.features import admin
 
 NAME = "startup"
 LAUNCHCTL = "/bin/launchctl"
 SFLTOOL = "/usr/bin/sfltool"
+SUDO = "/usr/bin/sudo"
 DISABLED_SUFFIX = ".disabled"
 SYSTEM_DIRS = (("/Library/LaunchAgents", "agent"), ("/Library/LaunchDaemons", "daemon"))
 # Loại mục BTM không phải thứ chạy lúc khởi động (nhóm theo hãng, plug-in Quick Look/Spotlight, dock tile).
@@ -41,6 +43,7 @@ def run_cmd(cmd, timeout=30):
 
 
 # ---------- sfltool dumpbtm (hỏi mật khẩu một lần) ----------
+# Hết hỏi hẳn: `admin grant btm-read` (mclib/features/admin.py) → chạy qua `sudo -n`, không hộp thoại.
 # `sfltool dumpbtm` bắt nhập mật khẩu admin MỖI lần chạy (hộp thoại "sfltool wants to make changes"), mà scan chạy định kỳ
 # (autoclean, app, lệnh) → nhớ kết quả theo chữ ký file CSDL BTM: chỉ hỏi lại khi login item / mục chạy nền thực sự đổi.
 # Cache để ở Application Support (thứ mac-cleaner không dọn), dùng chung cho mọi nơi gọi, bất kể MACCLEANER_DATA.
@@ -61,22 +64,28 @@ def btm_signature(db_dir=BTM_DB_DIR):
     return "|".join(parts) or None
 
 
-def dumpbtm(run=run_cmd, cache=None, db_dir=BTM_DB_DIR, timeout=60):
+def dumpbtm(run=run_cmd, cache=None, db_dir=BTM_DB_DIR, timeout=60, sudo=False):
     """(mã thoát, stdout, stderr) của `sfltool dumpbtm`. cache=đường dẫn file → dùng lại kết quả khi chữ ký CSDL BTM chưa đổi
-    (kể cả lần bị từ chối: không hỏi lại tới khi BTM đổi hoặc xoá file cache). Không cache khi lệnh không chạy được/quá giờ."""
+    (kể cả lần bị từ chối: không hỏi lại tới khi BTM đổi hoặc xoá file cache). Không cache khi lệnh không chạy được/quá giờ.
+    sudo=True (the user ran `admin grant btm-read`) → `sudo -n` first, no dialog at all; a refusal remembered from
+    before the grant is then ignored."""
     sig = btm_signature(db_dir) if cache else None
     if sig:
         try:
             with open(cache, encoding="utf-8") as f:
                 c = json.load(f)
-            if c.get("sig") == sig:
+            if c.get("sig") == sig and (c.get("rc") == 0 or not sudo):
                 err = c.get("err") or ""
                 if c.get("rc") != 0:
                     err = (err.strip() + f" (kết quả nhớ từ lần trước; xoá {cache} để hỏi lại)").strip()
                 return c.get("rc"), c.get("out") or "", err
         except (OSError, ValueError, AttributeError):
             pass
-    rc, out, err = run([SFLTOOL, "dumpbtm"], timeout=timeout)
+    rc = None
+    if sudo:
+        rc, out, err = run([SUDO, "-n", SFLTOOL, "dumpbtm"], timeout=timeout)
+    if rc != 0:  # no grant for this command (or sudo refused) → the plain call, with macOS's own password dialog
+        rc, out, err = run([SFLTOOL, "dumpbtm"], timeout=timeout)
     if sig and rc is not None:
         try:
             os.makedirs(os.path.dirname(cache), exist_ok=True)
@@ -272,7 +281,8 @@ def gather(home=None, run=run_cmd, uid=None, system_dirs=SYSTEM_DIRS):
         if r["label"] in overrides:
             r["launchctl_disabled"] = overrides[r["label"]]
 
-    rc, out, err = dumpbtm(run, cache=BTM_CACHE if run is run_cmd else None)  # chỉ cache lệnh thật, không cache fake của test
+    real = run is run_cmd  # chỉ cache và dùng quyền đã cấp với lệnh thật, không với fake của test
+    rc, out, err = dumpbtm(run, cache=BTM_CACHE if real else None, sudo=real and admin.installed())
     btm = parse_btm(out) if rc == 0 else []
     if rc != 0 or not btm:
         errors.append("sfltool dumpbtm không có dữ liệu" + (f": {(err or '').strip()[:120]}" if err else ""))

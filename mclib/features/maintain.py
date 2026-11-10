@@ -1,11 +1,13 @@
-"""Tác vụ bảo trì cấp user (thay `mo optimize`). Không bao giờ gọi sudo.
+"""Tác vụ bảo trì cấp user (thay `mo optimize`). Không hỏi mật khẩu, không sudo — trừ tác vụ người dùng đã cấp quyền
+một lần bằng `admin grant <task>` (lệnh cố định, xem mclib/features/admin.py): tác vụ đó chạy qua `sudo -n`.
 
   python3 maccleaner.py maintain list [--json]
   python3 maccleaner.py maintain run <task> [--yes]      không có --yes: chỉ in lệnh sẽ chạy
   scan → report["features"]["maintain"] = {"summary": {"maintenance": [{task, needsRoot, runnable, available, command…}]}}
 
 Mỗi tác vụ:
-  needsRoot  cần quyền admin → mac-cleaner chỉ in lệnh `sudo …` để người dùng tự chạy;
+  needsRoot  cần quyền admin → mac-cleaner chỉ in lệnh `sudo …` để người dùng tự chạy, trừ khi đã `admin grant`
+             (granted=true → `run --yes` chạy được);
   runnable   không cần root VÀ vô hại (tạo lại được, không mất dữ liệu) → `run --yes` chạy được;
              tác vụ không cần root nhưng có hệ quả (font, Homebrew) chỉ in lệnh;
   available  lệnh và đúng tuỳ chọn có trên máy này (dò bằng help của chính lệnh — macOS đổi tuỳ chọn giữa các bản).
@@ -15,6 +17,7 @@ import os
 import shlex
 import subprocess
 
+from mclib.features import admin
 
 NAME = "maintain"
 LSREGISTER = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework"
@@ -101,12 +104,14 @@ def shell(t):
     return " && ".join(shlex.join(c) for c in t["commands"])
 
 
-def tasks(run=_help, which=_which):
+def tasks(run=_help, which=_which, granted=None):
+    granted = admin.granted() if granted is None else granted
     out = []
     for t in TASKS:
         ok, why = available(t, run, which)
-        out.append(dict(task=t["task"], title=t["title"], needsRoot=t["needsRoot"],
-                        runnable=bool(t["runnable"] and ok), available=ok, command=shell(t), note=t["note"],
+        out.append(dict(task=t["task"], title=t["title"], needsRoot=t["needsRoot"], grantable=t["task"] in admin.IDS,
+                        granted=t["task"] in granted, runnable=bool((t["runnable"] or t["task"] in granted) and ok),
+                        available=ok, command=shell(t), note=t["note"],
                         **({"unavailable": why} if why else {})))
     return out
 
@@ -115,20 +120,22 @@ def find(task):
     return next((t for t in TASKS if t["task"] == task), None)
 
 
-def run_task(name, yes=False, log=print, runner=subprocess.run, run=_help, which=_which):
+def run_task(name, yes=False, log=print, runner=subprocess.run, run=_help, which=_which, granted=None):
     """Chạy một tác vụ runnable. yes=False: chỉ in lệnh. Trả mã thoát (0 ok)."""
     t = find(name)
     if not t:
         log(f"không có tác vụ {name!r} — xem `maintain list`")
         return 2
-    if t["needsRoot"]:
-        log(f"{t['title']}: cần quyền admin — mac-cleaner không chạy sudo. Tự chạy trong Terminal:\n  {shell(t)}")
+    allowed = name in (admin.granted() if granted is None else granted)
+    if t["needsRoot"] and not allowed:
+        how = f"Cấp quyền một lần: admin grant {name} --yes · hoặc tự" if name in admin.IDS else "Tự"
+        log(f"{t['title']}: cần quyền admin — mac-cleaner không hỏi mật khẩu. {how} chạy trong Terminal:\n  {shell(t)}")
         return 1
     ok, why = available(t, run, which)
     if not ok:
         log(f"{t['title']}: {why}")
         return 1
-    if not t["runnable"]:
+    if not (t["runnable"] or allowed):
         log(f"{t['title']}: {t['note']}. Tự chạy khi đã hiểu hệ quả:\n  {shell(t)}")
         return 1
     if not yes:
@@ -136,6 +143,8 @@ def run_task(name, yes=False, log=print, runner=subprocess.run, run=_help, which
         return 0
     rc = 0
     for cmd in t["commands"]:
+        if cmd[0] == "sudo":  # granted: exactly the command sudoers lists, never a password prompt
+            cmd = [admin.SUDO, "-n"] + cmd[1:]
         log(f"$ {shlex.join(cmd)}")
         try:
             r = runner(cmd, capture_output=True, text=True, timeout=900)
@@ -166,10 +175,12 @@ def cli(args):
         print(json.dumps(lst, ensure_ascii=False))
         return 0
     for t in lst:
-        mark = "chạy được" if t["runnable"] else "cần sudo" if t["needsRoot"] else "tự chạy" if t["available"] else "không có"
+        mark = ("chạy được" if t["runnable"] else "cần sudo · cấp được" if t["grantable"] else "cần sudo" if t["needsRoot"]
+                else "tự chạy" if t["available"] else "không có")
         print(f"{t['task']:20} [{mark}] {t['title']}")
         print(f"{'':20}   {t['command']}" + (f"  — {t['unavailable']}" if t.get("unavailable") else ""))
-    print("\nChạy: python3 maccleaner.py maintain run <task> --yes  (chỉ tác vụ 'chạy được'; tác vụ cần sudo thì tự chạy lệnh in ra)")
+    print("\nChạy: python3 maccleaner.py maintain run <task> --yes  (chỉ tác vụ 'chạy được')\n"
+          "Tác vụ cần sudo: tự chạy lệnh in ra, hoặc cấp quyền một lần — python3 maccleaner.py admin list")
     return 0
 
 
