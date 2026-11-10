@@ -4,7 +4,8 @@
 #   ARCHS="arm64" ./scripts/make-app.sh   # one architecture (faster while developing)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="1.9.0"
+VERSION="$(sed -n 's/^__version__ = "\(.*\)".*/\1/p' mclib/__init__.py)"   # single source of the version
+[ -n "$VERSION" ] || { echo "no __version__ in mclib/__init__.py" >&2; exit 1; }
 ARCHS="${ARCHS:-arm64 x86_64}"
 # Map the build machine's absolute path to "." so the shipped binary does not leak the username/directory.
 # (debug info is removed by `strip -S` below, so -debug-prefix-map is not needed)
