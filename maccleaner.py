@@ -307,8 +307,10 @@ def scan_caches():
                               action="trash", note="có thể cần quyền admin"))
     dev = os.path.join(lib, "Developer")
     for p in children(os.path.join(dev, "Xcode/DerivedData")):
-        items.append(item("caches", "xcode-deriveddata", Path(p).name, p, owner="Xcode", safety="safe", action="trash",
-                          note="Xcode tự build lại"))
+        # review, never safe: nothing cleans DerivedData on its own (default `clean`, schedulers that take the safe tier);
+        # the scan still proposes it (board: "Cân nhắc", not pre-ticked) and the user decides per project.
+        items.append(item("caches", "xcode-deriveddata", Path(p).name, p, owner="Xcode", safety="review", action="trash",
+                          note="Xcode tự build lại, lần build sau lâu hơn — không dọn tự động, bạn tự quyết"))
     for p in children(os.path.join(dev, "Xcode/iOS DeviceSupport")) + children(os.path.join(dev, "Xcode/watchOS DeviceSupport")):
         items.append(item("caches", "device-support", Path(p).name, p, owner="Xcode", safety="review", action="trash",
                           note="Xcode tạo lại khi cắm thiết bị"))
