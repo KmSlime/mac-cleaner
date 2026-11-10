@@ -1,20 +1,20 @@
 #!/bin/bash
-# Build release Universal (arm64 + x86_64) và đóng gói build/MacCleaner.app (ký ad-hoc).
+# Build a Universal release (arm64 + x86_64) and package build/MacCleaner.app (ad-hoc signed).
 #   ./scripts/make-app.sh            # Universal
-#   ARCHS="arm64" ./scripts/make-app.sh   # một kiến trúc (nhanh hơn khi phát triển)
+#   ARCHS="arm64" ./scripts/make-app.sh   # one architecture (faster while developing)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="1.9.0"
 ARCHS="${ARCHS:-arm64 x86_64}"
-# Đổi đường dẫn tuyệt đối của máy build thành "." — binary phát hành không lộ username/thư mục.
-# (debug info bị `strip -S` bỏ hẳn bên dưới nên không cần -debug-prefix-map)
+# Map the build machine's absolute path to "." so the shipped binary does not leak the username/directory.
+# (debug info is removed by `strip -S` below, so -debug-prefix-map is not needed)
 PREFIX_MAP=(-Xswiftc -file-prefix-map -Xswiftc "$PWD=.")
 
 APP=build/MacCleaner.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Web"
 
-# Mỗi --arch có thể ghi vào CÙNG thư mục output (SwiftPM mới) → chép slice ra ngay sau khi build.
+# Each --arch may write to the SAME output directory (newer SwiftPM) → copy the slice out right after its build.
 SLICE_DIR="$(mktemp -d)"; trap 'rm -rf "$SLICE_DIR"' EXIT
 SLICES=()
 for arch in $ARCHS; do
@@ -23,12 +23,13 @@ for arch in $ARCHS; do
   SLICES+=("$SLICE_DIR/MacCleaner-$arch")
 done
 lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/MacCleaner"
-strip -S "$APP/Contents/MacOS/MacCleaner"   # bỏ debug stab (chứa đường dẫn máy build)
+strip -S "$APP/Contents/MacOS/MacCleaner"   # drop debug stabs (they hold build-machine paths)
 
 cp maccleaner.py "$APP/Contents/Resources/maccleaner.py"
-rsync -a --exclude "__pycache__" mclib "$APP/Contents/Resources/"   # maccleaner.py import mclib từ cạnh nó
+rsync -a --exclude "__pycache__" mclib "$APP/Contents/Resources/"   # maccleaner.py imports mclib from next to itself
 cp Web/board.html "$APP/Contents/Resources/Web/board.html"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
+cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"   # redraw: swift scripts/make-icon.swift
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -37,6 +38,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Mac Cleaner</string>
   <key>CFBundleIdentifier</key><string>local.maccleaner</string>
   <key>CFBundleExecutable</key><string>MacCleaner</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>8</string>
