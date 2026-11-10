@@ -1,157 +1,278 @@
 # Mac Cleaner
 
-Kiểm kê toàn bộ máy macOS và dọn dẹp an toàn — lõi Python thư viện chuẩn, không `sudo`:
+Xem máy Mac đang chứa gì, thứ nào xoá được, rồi dọn một cách an toàn.
 
-- **Kiểm kê + dọn:** ứng dụng, plugin (thuộc app nào), extension (editor + trình duyệt), git (binary + mọi repo), cache, log,
-  junk (build artifact, installer, backup cũ, leftover của app đã gỡ, simulator hỏng), rác hệ thống/trình duyệt mở rộng.
-- **Ứng dụng:** gỡ app kèm file liên quan, app lâu không mở, bản cập nhật (Sparkle, Homebrew cask, macOS — chỉ liệt kê).
-- **Dung lượng:** bản đồ thư mục, file lớn lâu không dùng, file trùng, thư mục cloud (bản local vs chỉ còn trên cloud).
-- **Hệ thống:** sức khoẻ máy (ổ, RAM, CPU, pin, mạng), mục khởi động, phần mềm bám trụ + chữ ký mã, quyền riêng tư (TCC), bảo trì cấp user.
-- **Phân loại sau quét:** NÊN XOÁ / CÂN NHẮC / GIỮ kèm "xoá thì sao".
+- **Mặc định chỉ xem trước.** Không có gì bị xoá cho tới khi bạn bấm xoá (hoặc gõ `--yes`).
+- **Xoá = chuyển vào Thùng rác**, khôi phục được cho tới khi bạn đổ Thùng rác. Mỗi lần dọn đều có log.
+- **Không dùng `sudo`.** Phần hệ thống của macOS, khoá, mật khẩu và dữ liệu cá nhân không bao giờ bị dọn tự động.
 
-Mỗi mục có đường dẫn, app sở hữu, phiên bản, dung lượng và mức an toàn. Mặc định chỉ xem trước; xoá = chuyển vào Thùng rác, có log.
-Dùng qua dòng lệnh, app desktop (dashboard có sidebar, KPI, biểu đồ, drawer) hoặc plugin Claude Code.
+Dùng theo ba cách, cùng một lõi: **app** (dashboard), **dòng lệnh** `mac-cleaner`, hoặc **plugin Claude Code**.
 
-## Cài (máy Mac bất kỳ, macOS 13+, Apple Silicon hoặc Intel)
+| Mac Cleaner xem và dọn | |
+|---|---|
+| Kiểm kê + dọn | ứng dụng, plugin (thuộc app nào), extension (editor + trình duyệt), git (binary + mọi repo), cache, log, junk (build artifact, installer, backup cũ, phần sót lại của app đã gỡ, simulator hỏng), rác hệ thống/trình duyệt |
+| Ứng dụng | gỡ app kèm file liên quan, app lâu không mở, bản cập nhật (Sparkle, Homebrew cask, macOS — chỉ liệt kê) |
+| Dung lượng | bản đồ thư mục, file lớn lâu không dùng, file trùng, thư mục cloud (bản local so với chỉ còn trên cloud) |
+| Hệ thống | sức khoẻ máy (ổ, RAM, CPU, pin, mạng), mục khởi động, phần mềm bám trụ + chữ ký mã, quyền riêng tư (TCC), bảo trì cấp user |
+
+Mỗi mục có đường dẫn, app sở hữu, phiên bản, dung lượng và mức an toàn.
+
+**Trong tài liệu này (hướng dẫn sử dụng):**
+[1. Cài đặt](#1-cài-đặt) · [2. Cập nhật](#2-cập-nhật) · [3. Dùng app](#3-dùng-app) · [4. Mức an toàn](#4-mức-an-toàn) · [5. Dòng lệnh](#5-dòng-lệnh) · [6. Quyền quản trị](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được) · [7. Dùng với Claude Code](#7-dùng-với-claude-code) · [8. Giới hạn và câu hỏi thường gặp](#8-giới-hạn-và-câu-hỏi-thường-gặp)
+
+**Phần kỹ thuật để riêng:** [docs/TECHNICAL.md](docs/TECHNICAL.md) — kiến trúc, cấu trúc mã nguồn, rào an toàn chi tiết, giao thức nhúng, build/test, phát hành (viết bằng tiếng Anh).
+
+---
+
+## 1. Cài đặt
+
+Cần macOS 13 trở lên (Apple Silicon hoặc Intel) và Python 3 — thiếu Python thì app tự hỏi và mở trình cài chính thức của Apple.
+
+### Cách 1 — Chỉ cần app (nhanh nhất)
+
+Mở **Terminal**, dán một dòng:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/KmSlime/mac-cleaner/develop/update.sh | bash
+```
+
+Lệnh tải bản phát hành mới nhất, kiểm gói (SHA-256, chữ ký mã) rồi đặt `MacCleaner.app` vào `~/Applications`. Không cần `sudo`. Mở app: `open ~/Applications/MacCleaner.app`.
+
+Không muốn dùng Terminal: tải `MacCleaner-<bản>-macos-universal.zip` ở trang [Releases](https://github.com/KmSlime/mac-cleaner/releases/latest), giải nén, kéo `MacCleaner.app` vào Applications. App ký ad-hoc nên lần đầu macOS sẽ chặn: chuột phải vào app → **Mở** (macOS 15 trở lên: Cài đặt hệ thống → Quyền riêng tư & Bảo mật → **Vẫn mở**).
+
+### Cách 2 — Đủ bộ: app + lệnh `mac-cleaner` + plugin Claude Code
 
 ```sh
 git clone https://github.com/KmSlime/mac-cleaner.git && cd mac-cleaner && ./install.sh
 ```
 
-`install.sh` không dùng `sudo`, chạy lại được nhiều lần:
+`install.sh` không dùng `sudo`, chạy lại bao nhiêu lần cũng được:
 
 | Bước | Làm gì |
 |---|---|
 | Command Line Tools | Thiếu thì mở trình cài chính thức của Apple (cho Python 3 + Swift); cài xong chạy lại `./install.sh` |
-| App **Mac Cleaner** | Build Universal từ source → `~/Applications/MacCleaner.app`. Thiếu Python 3 thì app tự hỏi và mở trình cài |
-| Lệnh `mac-cleaner` | `~/.local/bin/mac-cleaner` — dùng chung report với app (`~/Library/Application Support/MacCleaner`) |
-| Plugin Claude Code | Có `claude` thì cài plugin `mac-cleaner` (skill `mac-cleaner`, hook xin duyệt) từ chính repo; không có thì bỏ qua |
+| App **Mac Cleaner** | Build từ source → `~/Applications/MacCleaner.app` |
+| Lệnh `mac-cleaner` | `~/.local/bin/mac-cleaner` — dùng chung report với app |
+| Plugin Claude Code | Có `claude` thì cài plugin `mac-cleaner` (skill + hook xin duyệt); không có thì bỏ qua |
 
-Tuỳ chọn: `--no-app`, `--no-plugin`. Chỉ cần app: tải `.zip` ở trang Releases.
-Chỉ cần skill trong Claude Code: `/plugin marketplace add KmSlime/mac-cleaner` rồi `/plugin install mac-cleaner@mac-cleaner`.
+Tuỳ chọn: `./install.sh --no-app` (bỏ build app), `./install.sh --no-plugin` (bỏ plugin).
 
-## Chạy
+### Cách 3 — Chỉ skill trong Claude Code
 
-```sh
-python3 maccleaner.py scan                       # quét → reports/report-<ts>.{html,md,json}, rồi chạy hooks/post-scan/*
-python3 scripts/classify.py --report latest      # phân loại report: NÊN XOÁ / CÂN NHẮC / GIỮ + "xoá thì sao"
-python3 scripts/classify.py --fs                 # quét TOÀN BỘ hệ thống file từ / (gốc → lá, không sudo)
-python3 scripts/classify.py --fs --root ~/Library --root ~/Developer --out reports   # theo boundary, ghi classify-<ts>.{md,json}
-open reports/report-*.html                       # report tĩnh (tick chọn → copy lệnh dọn)
-python3 maccleaner.py clean                      # preview: mọi mục "an toàn" của report mới nhất
-python3 maccleaner.py clean --category caches --yes          # dọn thật một nhóm
-python3 maccleaner.py clean --ids a1b2c3d4e5,... --yes       # dọn đúng các id (lấy từ report/app)
-python3 maccleaner.py clean --include-review ...             # gồm cả mục "cân nhắc"
-python3 maccleaner.py clean --ids <id> --force --yes          # xoá đích danh cả mục kiểm kê/bảo vệ (app, repo, plugin…)
-python3 maccleaner.py clean --category junk:app-cache --yes # dọn mục của một tính năng (<tính năng>:<kind>)
-python3 maccleaner.py clean --ids <id>,... --mode permanent --yes  # xoá VĨNH VIỄN (chỉ mục quét gốc trong home, không kèm --force)
-
-# Tính năng (mclib/features/) — mặc định chỉ đọc / xem trước; chỉ --yes mới làm thật (hook bắt hỏi duyệt)
-python3 maccleaner.py status [--json]                       # sức khoẻ máy: ổ, RAM/swap, CPU, pin, mạng, thiết bị, cảnh báo
-python3 maccleaner.py junk                                  # rác hệ thống mở rộng: cache trình duyệt/app, log container, plist hỏng…
-python3 maccleaner.py uninstall <tên|bundle id|.app> [--yes] # gỡ app kèm file liên quan (→ Thùng rác) · --list: app lâu không mở
-python3 maccleaner.py updates [--offline]                   # bản cập nhật app (Sparkle, Homebrew cask) + macOS — không cài
-python3 maccleaner.py analyze [path] [--depth 3]            # bản đồ dung lượng
-python3 maccleaner.py large [path…] --min 500M --older 180d # file lớn và lâu không dùng
-python3 maccleaner.py dupes [path…] --min-size 5M           # file trùng (luôn giữ một bản mỗi nhóm)
-python3 maccleaner.py cloud                                 # iCloud/Dropbox/…: bản local vs chỉ còn trên cloud
-python3 maccleaner.py startup list | disable|enable <label> [--yes]  # mục khởi động (LaunchAgent, login item)
-python3 maccleaner.py audit [--gatekeeper]                  # phần mềm bám trụ + chữ ký mã (mặc định offline)
-python3 maccleaner.py privacy list | reset <dịch vụ> <bundle id> [--yes]  # dấu vết trình duyệt, quyền TCC
-python3 maccleaner.py maintain list | run <tác vụ> [--yes]  # bảo trì cấp user; tác vụ cần sudo chỉ in lệnh, trừ khi đã `admin grant`
-python3 maccleaner.py self-update status | check | apply [--yes]          # bản mới trên GitHub: xem, kiểm tra, cập nhật tay
-python3 maccleaner.py self-update auto on [--every daily|weekly] [--at HH:MM] [--install|--no-install] [--yes] | auto off
-python3 maccleaner.py admin list | grant <id>…|all [--yes] | revoke <id>…|all [--yes]  # quyền quản trị cấp một lần cho vài lệnh cố định
-
-swift run MacCleaner                             # app desktop: quét lại, chọn, xem trước, dọn ngay trong UI
-swift run MacCleaner --snapshot x.png            # render report mới nhất ra ảnh rồi thoát
-./scripts/make-app.sh && open build/MacCleaner.app
-TMPDIR=/tmp python3 -m unittest discover tests   # unit test
+```
+/plugin marketplace add KmSlime/mac-cleaner
+/plugin install mac-cleaner@mac-cleaner
 ```
 
-Yêu cầu: macOS 13+, Python 3.9+ (chỉ thư viện chuẩn), Swift 6.2+ cho app. Lõi Python không có dependency ngoài;
-app Swift dùng [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) cho terminal nhúng (SwiftPM tự tải khi build).
-App `.app` ghi report/log vào `~/Library/Application Support/MacCleaner`; `swift run`/CLI ghi cạnh source (`reports/`, `logs/`, đã gitignore).
+---
 
-## Kiến trúc
+## 2. Cập nhật
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/architecture-dark.png">
-  <img alt="Sơ đồ kiến trúc Mac Cleaner: người dùng và Claude Code đi qua app, CLI hoặc plugin vào maccleaner.py; registry nạp các tính năng; safety.py kiểm lại rồi chuyển vào Thùng rác và ghi log" src="docs/architecture/architecture-light.png">
-</picture>
+### Một lệnh, dùng được cho mọi phiên bản
 
-Bản tương tác (có liên kết tới từng dòng mã nguồn): [docs/architecture/architecture.html](docs/architecture/architecture.html) — tải về rồi mở bằng trình duyệt.
+```sh
+curl -fsSL https://raw.githubusercontent.com/KmSlime/mac-cleaner/develop/update.sh | bash
+```
 
-- Ba lối vào cùng một lõi `maccleaner.py`: lệnh `mac-cleaner` trong Terminal, app Swift (WKWebView hiện `board.html`, cầu JS `post()` chạy `python3 maccleaner.py … --json`), và plugin Claude Code (hook `PreToolUse` bắt hỏi duyệt mọi lệnh `--yes`).
-- `scan` quét các nhóm gốc, rồi `registry.py` nạp từng file `mclib/features/*.py` (lệnh con + `report["features"]`); tính năng đọc trạng thái máy qua công cụ macOS (`launchctl`, `sfltool`, `tccutil`, Spotlight, `brew`, `softwareupdate`…).
-- Report ghi ra `reports/report-<ts>.{json,md,html}` (HTML nhúng `board.html`), sau đó hook `post-scan` chạy `classify.py`.
-- `clean` và `uninstall --yes` đi qua `safety.py`: kiểm lại từng mục lúc chạy, chặn cứng SIP/thư mục gốc/phần mềm bảo mật, chuyển vào Thùng rác và ghi `logs/clean-<ts>.jsonl`. Các lệnh đổi trạng thái khác (`startup`, `privacy reset`, `maintain run`) chỉ chạy khi có `--yes`.
+Đây cũng chính là lệnh cài ở trên. **App cũ đến đâu cũng dùng được** — kể cả những bản đầu tiên, vốn chưa có nút Cài đặt hay lệnh `self-update`.
 
-## Mục lục
+- Lệnh tự tìm app ở `~/Applications` rồi `/Applications`. App để chỗ khác thì chỉ đường dẫn:
+  `curl -fsSL https://raw.githubusercontent.com/KmSlime/mac-cleaner/develop/update.sh | bash -s -- /đường/dẫn/MacCleaner.app`
+- Gói tải về được kiểm SHA-256, bundle id, số phiên bản và chữ ký mã. **Mọi kiểm tra đạt thì mới thay app**; có gì sai thì dừng, app đang cài còn nguyên.
+- App cũ được chuyển vào Thùng rác (lấy lại được), app mới nằm đúng chỗ cũ.
+- Đang ở bản mới nhất thì lệnh báo vậy và không làm gì.
+- App đang mở vẫn là bản cũ: thoát (⌘Q) rồi mở lại.
 
-Trang **Tổng quan** đọc từ trên xuống: *Có thể giải phóng* (dung lượng dọn được, thanh đĩa: đã dùng / an toàn / cân nhắc / trống, nút **Xem đề xuất xoá**) → *Theo mức an toàn* (thẻ Dọn an toàn / Cân nhắc / Kiểm kê & bảo vệ) → *Theo nhóm* (biểu đồ theo nhóm + mục lớn nhất) → *Chi tiết* (bảng mọi mục, lọc theo mức/loại/tìm kiếm) → *Theo chủ sở hữu*. Đang quét thì có thanh trạng thái (bước hiện tại); chưa có report thì có màn hình trống với nút **Quét ngay**.
+### Từ bản 1.10.0: cập nhật ngay trong app
 
-Sidebar là cây mục lục: **Tổng quan** → từng nhóm (Ứng dụng, Plugin, Extension, Git, Cache & log, Junk) → từng loại bên trong (vd Cache & log › Log, Cache người dùng, Xcode DerivedData…), mỗi nút có số mục và dung lượng. Khu **Tính năng** liệt kê kết quả của `mclib/features/` trong report (sức khoẻ máy, rác hệ thống, dung lượng, file trùng, cloud, gỡ app, cập nhật, khởi động, bám trụ, riêng tư, bảo trì); lệnh đổi trạng thái máy chỉ hiện để copy chạy trong Terminal. Bấm mũi tên để mở/thu gọn, bấm tên để xem. Bấm bất kỳ chỗ nào trên trang dẫn tới danh sách (một loại trong cây, một thanh biểu đồ, thẻ KPI, một app trong "App chiếm cache", một app trong "Plugin theo app", tiêu đề các thẻ) thì bảng được lọc và **trang cuộn tới bảng**. Bộ lọc đang bật hiện thành chip phía trên bảng, bấm ✕ để bỏ.
+Nút **Cài đặt** ở cuối sidebar:
 
-## Xoá
+- **Kiểm tra / Cập nhật:** hỏi GitHub bản phát hành mới nhất và cài nếu bạn bấm.
+- **Tự kiểm tra theo lịch — mặc định TẮT, bạn phải tick đồng ý mới bật.** Chọn hằng ngày hoặc thứ Hai hằng tuần, vào giờ bạn đặt; chọn *chỉ thông báo* (mặc định) hoặc *tự cài*. Mỗi lần chạy là một request HTTPS tới `api.github.com` để đọc số phiên bản, không gửi dữ liệu nào của máy. Tắt lúc nào cũng được.
 
-**Mọi mục hiện trên dashboard đều xoá được**, trừ những chỗ macOS khoá: phần hệ thống được SIP bảo vệ (`/System`, `/usr` ngoài `/usr/local`, `/bin`, `/sbin` — app và plugin có sẵn của macOS), thư mục gốc (`/Applications`, `~`, `~/Documents`, `~/Library`…), và thư mục Mac Cleaner đang chạy trên đó. Những mục này có nút xoá mờ kèm lý do.
+### Cài bằng `install.sh` (có lệnh `mac-cleaner`)
 
-- **Đề xuất xoá (popup):** quét xong tự bật (nút **Đề xuất xoá** ở đầu trang để mở lại). Hai nhóm: **Khuyến nghị** (mục `an toàn`, chọn sẵn) và **Cân nhắc** (mục `cân nhắc`, không chọn sẵn), gộp theo nhóm, tick cả nhóm hoặc từng mục, có tổng dung lượng đã chọn. Kiểu xoá: **Thùng rác** (mặc định) hoặc **Xoá vĩnh viễn** (hỏi xác nhận lần hai, phải tick "Tôi hiểu"). Popup do board giữ, theo theme của board; host chỉ nhận message `clean:{"ids":[…],"mode":"trash"|"permanent","yes":true}`.
-- **Từng mục:** nút **🗑** trên mỗi dòng của bảng, của "Lớn nhất" và "Git repos" (nút **ⓘ** để xem chi tiết). Hộp thoại có đường dẫn, loại, dung lượng, cách xoá, **Xem trước** và **Hiện trong Finder**. Mục `an toàn` xoá ngay; mục `cân nhắc` phải tick xác nhận; mục `kiểm kê`/`bảo vệ` (app, repo, plugin, backup mới nhất…) phải tick xác nhận và có cảnh báo theo loại (repo còn thay đổi chưa commit, plugin trong bundle app khác, app cài bằng quyền admin…).
-- **Cả nhóm:** nút 🗑 cạnh mỗi app trong "App chiếm cache" (mọi cache của app đó) và "Plugin theo app".
-- **Xoá toàn bộ** (cạnh Log, Quét lại): xoá mọi mục đang hiện trong bảng theo nhóm và bộ lọc hiện tại. Mặc định chỉ gồm mục dọn được (`an toàn` + `cân nhắc`); tick thêm để gồm cả mục kiểm kê/bảo vệ.
-- **Chọn nhiều:** checkbox trên mỗi dòng → thanh dưới đáy có **Xem trước** và **Xoá → Thùng rác**.
-- **Thùng rác:** mục Thùng rác trong Junk có nút **Đổ Thùng rác** riêng (xoá vĩnh viễn, phải tick xác nhận; macOS có thể hỏi quyền cho Mac Cleaner điều khiển Finder). Thùng rác không bao giờ gộp vào xoá hàng loạt.
+```sh
+mac-cleaner self-update check                 # có bản mới không
+mac-cleaner self-update apply                 # xem trước các bước, chưa làm gì
+mac-cleaner self-update apply --yes           # cập nhật cả lệnh mac-cleaner lẫn app
+mac-cleaner self-update auto on --every weekly --at 09:00 --yes    # tự kiểm tra theo lịch (thêm --install để tự cài)
+mac-cleaner self-update auto off              # gỡ lịch
+```
 
-Mọi thứ khác đều **chuyển vào Thùng rác**, khôi phục được cho tới khi đổ — trừ khi chọn **Xoá vĩnh viễn** (`clean --mode permanent`): mỗi mục vẫn qua đủ kiểm tra của Thùng rác, thêm rào riêng (chỉ mục quét gốc `an toàn`/`cân nhắc` chuyển-vào-Thùng-rác, id khớp đường dẫn, nằm trong home sâu ≥ 2 cấp, thư mục cha thật không trỏ ra ngoài home; không kèm `--force`), rồi được đổi tên vào `~/.Trash` và xoá hẳn **đúng bản vừa chuyển** — không bao giờ xoá thẳng đường dẫn gốc; lỗi giữa chừng thì phần còn lại vẫn ở Thùng rác. LaunchAgent được ngừng (`launchctl bootout`) trước khi chuyển plist vào Thùng rác. Mỗi mục được kiểm lại ngay trước khi xoá. Trong report HTML tĩnh, nút xoá copy lệnh `clean --ids …` (thêm `--force` nếu có mục kiểm kê) để dán vào Terminal.
+Sau khi cập nhật, macOS có thể hỏi lại vài quyền (Full Disk Access, Automation) vì app ký ad-hoc.
 
-## Phân loại sau quét
+---
 
-`scan` xong tự chạy mọi file thực thi trong `hooks/post-scan/` (theo tên, đối số là report JSON; `--no-hooks` để tắt).
-Mặc định có `10-classify` → [scripts/classify.py](scripts/classify.py) in bảng tổng và 5 mục NÊN XOÁ lớn nhất, ghi đủ ra `reports/classify-<ts>.{md,json}`.
+## 3. Dùng app
+
+### Lần đầu mở
+
+App tự quét và hiện terminal để bạn thấy tiến độ. Quét xong, popup **Đề xuất xoá** tự bật.
+
+### Trang Tổng quan — đọc từ trên xuống
+
+1. **Có thể giải phóng:** dung lượng dọn được, thanh đĩa (đã dùng / an toàn / cân nhắc / trống), nút **Xem đề xuất xoá**.
+2. **Theo mức an toàn:** thẻ Dọn an toàn / Cân nhắc / Kiểm kê & bảo vệ.
+3. **Theo nhóm:** biểu đồ theo nhóm + mục lớn nhất.
+4. **Chi tiết:** bảng mọi mục, lọc theo mức / loại / tìm kiếm.
+5. **Theo chủ sở hữu.**
+
+Đang quét thì có thanh trạng thái (bước hiện tại). Chưa có report thì có màn hình trống với nút **Quét ngay**.
+
+### Sidebar — cây mục lục
+
+- **Tổng quan** → từng nhóm (Ứng dụng, Plugin, Extension, Git, Cache & log, Junk) → từng loại bên trong (vd Cache & log › Log, Cache người dùng, Xcode DerivedData…). Mỗi nút có số mục và dung lượng. Bấm mũi tên để mở/thu gọn, bấm tên để xem.
+- Khu **Tính năng**: sức khoẻ máy, rác hệ thống, dung lượng, file trùng, cloud, gỡ app, cập nhật, khởi động, bám trụ, riêng tư, bảo trì. Lệnh làm thay đổi trạng thái máy chỉ hiện để bạn copy và chạy trong Terminal.
+- Bấm bất kỳ chỗ nào dẫn tới một danh sách (một loại trong cây, một thanh biểu đồ, thẻ KPI, một app trong "App chiếm cache" hay "Plugin theo app", tiêu đề các thẻ) thì bảng được lọc và **trang cuộn tới bảng**. Bộ lọc đang bật hiện thành chip phía trên bảng, bấm ✕ để bỏ.
+
+### Xoá
+
+**Mọi mục hiện trên dashboard đều xoá được**, trừ những chỗ macOS khoá (xem [Không bao giờ xoá được](#không-bao-giờ-xoá-được)). Những mục đó có nút xoá mờ kèm lý do.
+
+| Cách xoá | Dùng khi | Hoạt động |
+|---|---|---|
+| **Đề xuất xoá** (popup) | muốn dọn nhanh sau khi quét | Quét xong tự bật; nút **Đề xuất xoá** ở đầu trang để mở lại. Hai nhóm: **Khuyến nghị** (mục *an toàn*, chọn sẵn) và **Cân nhắc** (không chọn sẵn). Tick cả nhóm hoặc từng mục, có tổng dung lượng đã chọn |
+| **Từng mục** | xoá đúng một thứ | Nút **🗑** trên mỗi dòng của bảng, của "Lớn nhất" và "Git repos" (nút **ⓘ** để xem chi tiết). Hộp thoại có đường dẫn, loại, dung lượng, cách xoá, **Xem trước** và **Hiện trong Finder** |
+| **Cả nhóm** | dọn mọi cache/plugin của một app | Nút 🗑 cạnh mỗi app trong "App chiếm cache" và "Plugin theo app" |
+| **Chọn nhiều** | tự chọn vài mục | Checkbox trên mỗi dòng → thanh dưới đáy có **Xem trước** và **Xoá → Thùng rác** |
+| **Xoá toàn bộ** | dọn hết những gì đang lọc | Cạnh nút Log, Quét lại. Xoá mọi mục đang hiện trong bảng theo nhóm và bộ lọc hiện tại; mặc định chỉ gồm mục dọn được (*an toàn* + *cân nhắc*), tick thêm để gồm cả mục kiểm kê/bảo vệ |
+| **Đổ Thùng rác** | lấy lại dung lượng thật | Nút riêng ở mục Thùng rác trong Junk: xoá vĩnh viễn, phải tick xác nhận (macOS có thể hỏi quyền cho Mac Cleaner điều khiển Finder). Thùng rác không bao giờ gộp vào xoá hàng loạt |
+
+Mức xác nhận tuỳ theo mục:
+
+- Mục *an toàn*: xoá ngay.
+- Mục *cân nhắc*: phải tick xác nhận.
+- Mục *kiểm kê* / *bảo vệ* (app, repo, plugin, backup mới nhất…): phải tick xác nhận, có cảnh báo theo loại (repo còn thay đổi chưa commit, plugin nằm trong app khác, app cài bằng quyền admin…).
+
+Kiểu xoá: **Thùng rác** (mặc định, khôi phục được) hoặc **Xoá vĩnh viễn** (hỏi xác nhận lần hai, phải tick "Tôi hiểu"; chỉ áp dụng cho mục *an toàn*/*cân nhắc* nằm trong thư mục home). Cache của app đang chạy được bỏ qua — đóng app rồi dọn.
+
+### Terminal trong app
+
+Phía dưới dashboard là một **terminal thật**: kéo thanh chia để đổi cỡ, **Thu gọn ▾** để còn thanh tiêu đề, ⌘L hoặc nút **Terminal** để hiện và focus.
+
+- Terminal hiện log của app: lệnh đang chạy, từng bước quét kèm số mục và thời gian, từng mục khi dọn, lỗi nếu có.
+- Ctrl-C để thôi xem log và dùng shell ngay tại thư mục dữ liệu (gõ lệnh `mac-cleaner` nếu đã cài theo Cách 2). Phiên kết thúc thì bấm **Mở lại**.
+- Nút **Terminal.app** mở cùng nội dung đó trong Terminal.app.
+- Log lưu ở `~/Library/Application Support/MacCleaner/logs/app-<ngày>.log`.
+
+### Cài đặt
+
+Nút **Cài đặt** ở cuối sidebar gồm hai phần: **Cập nhật** ([mục 2](#2-cập-nhật)) và **Quyền quản trị** ([mục 6](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được)).
+
+---
+
+## 4. Mức an toàn
+
+Mỗi mục được xếp vào một trong bốn mức:
+
+| Mức | Nghĩa | Ví dụ |
+|---|---|---|
+| **An toàn** (`safe`) | dọn không mất dữ liệu, app tự tạo lại | cache và log của user, cache trong Containers, simulator hỏng, backup cũ (đã có bản mới hơn), bản extension editor đã lỗi thời |
+| **Cân nhắc** (`review`) | dọn được nhưng nên xem trước | **Xcode DerivedData**, build artifact (`node_modules`, `Pods`, `.venv`…), cache tải lại rất lâu, installer `.dmg`/`.pkg`/`.xip`, iOS DeviceSupport, Archives, phần sót lại của app đã gỡ |
+| **Kiểm kê** (`info`) | chỉ liệt kê; xoá được khi bạn chọn đích danh | ứng dụng, plugin, extension đang dùng, git repo, backup mới nhất |
+| **Bảo vệ** (`protected`) | không bao giờ dọn tự động; chỉ xoá khi bạn chọn đích danh | Keychains, `~/.ssh`, `~/.gnupg`, dữ liệu ứng dụng trong `~/Library`, thư mục ẩn ở home chứa dữ liệu/cấu hình của các tool |
+
+**Xcode DerivedData** luôn được đề xuất kèm dung lượng nhưng **không bao giờ dọn tự động** (lần build sau sẽ lâu hơn): nó nằm ở nhóm *Cân nhắc*, bạn tự tick mới dọn.
+
+### Không bao giờ xoá được
+
+Kể cả khi chọn đích danh:
+
+- Phần hệ thống được SIP bảo vệ: `/System`, `/usr` (trừ `/usr/local`), `/bin`, `/sbin` — tức là app và plugin có sẵn của macOS.
+- Thư mục gốc: `/Applications`, `~`, `~/Documents`, `~/Library`…
+- Phần mềm bảo mật / quản lý thiết bị (EDR, MDM).
+- Thư mục Mac Cleaner đang chạy trên đó.
+
+Dữ liệu của trình quản lý mật khẩu, keychain, ssh/gpg, ví, app xác thực không bao giờ bị coi là "sót lại".
+
+### Phân loại sau khi quét
+
+Mỗi lần quét xong, Mac Cleaner in thêm một bảng tóm tắt ba nhóm, kèm "xoá thì sao" cho từng mục:
 
 | Nhóm | Nghĩa |
 |---|---|
 | **NÊN XOÁ** | tự tạo lại (cache, log, build, dependency, bản cài đã dùng) — xoá chỉ tốn thời gian dựng lại |
-| **CÂN NHẮC** | xoá được nhưng có hệ quả: mất trạng thái/đăng nhập/index của app, phải tải lại SDK/simulator, dữ liệu app không còn dùng, đổ Thùng rác là vĩnh viễn. Mỗi mục ghi *xoá thì sao* để người dùng tự quyết |
-| **GIỮ** | hệ thống (SIP), dữ liệu người dùng, khoá/bí mật, Homebrew (để `brew` quản), thứ đánh dấu giữ |
+| **CÂN NHẮC** | xoá được nhưng có hệ quả: mất trạng thái/đăng nhập/index của app, phải tải lại SDK/simulator, dữ liệu của app không còn dùng, đổ Thùng rác là vĩnh viễn |
+| **GIỮ** | hệ thống (SIP), dữ liệu người dùng, khoá/bí mật, Homebrew (để `brew` quản), thứ bạn đánh dấu giữ |
 
-- `--fs` đi từ gốc tới lá: thư mục khớp luật cụ thể (`~/Library/Caches`, `*/node_modules`, `*/.build`…) được tính cả cây thành một mục; thư mục chứa (`~`, `~/Library`, `~/Documents`…) và chỗ chưa có luật thì đi tiếp xuống tới `--depth` (mặc định 6). Bỏ qua `/System/Volumes` (Data volume đã thấy qua firmlink), `/Volumes`, `/dev`.
-- Danh sách luôn giữ: `--keep PATH` hoặc file `MACCLEANER_KEEP_FILE`. Lịch sử dọn đọc từ `logs/clean-*.jsonl` (+ `MACCLEANER_EXTRA_LOGS`).
-- Chỉ đọc, không xoá gì. Dọn vẫn qua `clean --ids … --yes`.
+Bảng đầy đủ các đường dẫn theo từng mức và cách `clean` kiểm lại từng mục: [docs/TECHNICAL.md](docs/TECHNICAL.md#5-safety-tiers-and-the-clean-guard).
 
-## Terminal
+---
 
-App có **terminal thật** (PTY, [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)) ở dưới board — kéo thanh chia để đổi cỡ, **Thu gọn ▾** còn thanh tiêu đề, ⌘L hoặc nút **Terminal** trên board để hiện và focus. Phiên chạy `tail -F` log của app: lệnh đang chạy, từng bước quét kèm số mục và thời gian, nhịp báo trong các bước dài, từng mục khi dọn, lỗi nếu có. Ctrl-C để thôi xem log và dùng shell đăng nhập ngay trong thư mục dữ liệu (gõ lệnh `mac-cleaner`). Phiên kết thúc thì bấm **Mở lại**. Nút **Terminal.app** mở cùng script đó trong Terminal.app. Log ghi ở `~/Library/Application Support/MacCleaner/logs/app-<ngày>.log`. Lần mở đầu tiên (chưa có report) app tự quét và tự hiện terminal.
+## 5. Dòng lệnh
 
-Board không có view log riêng: khi nhúng trong Ciel Monitor, terminal SwiftTerm của Ciel Monitor nhận message `terminal`.
+Lệnh `mac-cleaner` có sau khi cài theo [Cách 2](#cách-2--đủ-bộ-app--lệnh-mac-cleaner--plugin-claude-code) (trong thư mục clone, `python3 maccleaner.py …` là một). Chỉ cài app thì mọi việc làm trong app.
 
-## Cập nhật
+Quy tắc chung: **không có `--yes` thì chỉ xem trước**, có `--yes` mới làm thật.
 
-**Đã cài app rồi, chỉ muốn cập nhật bằng một lệnh** (không cần clone repo; cần app từ bản 1.10.0) — mở Terminal và gõ:
+**Quét và dọn**
 
 ```sh
-python3 ~/Applications/MacCleaner.app/Contents/Resources/maccleaner.py self-update apply --yes
+mac-cleaner scan                                   # quét, ghi report (html, md, json), rồi in bảng phân loại
+mac-cleaner clean                                  # xem trước: mọi mục "an toàn" của report mới nhất
+mac-cleaner clean --yes                            # dọn các mục đó (→ Thùng rác)
+mac-cleaner clean --category caches --yes          # dọn một nhóm
+mac-cleaner clean --category junk:app-cache --yes  # dọn một loại của một tính năng (<tính năng>:<loại>)
+mac-cleaner clean --ids a1b2c3d4e5,... --yes       # dọn đúng các mục (id lấy từ report hoặc app)
+mac-cleaner clean --include-review --yes           # gồm cả mục "cân nhắc" (DerivedData, node_modules…)
+mac-cleaner clean --ids <id> --force --yes         # xoá đích danh một mục kiểm kê/bảo vệ (app, repo, plugin…)
+mac-cleaner clean --ids <id>,... --mode permanent --yes   # xoá VĨNH VIỄN, không qua Thùng rác
 ```
 
-App nằm ở `/Applications` thì đổi `~/Applications` thành `/Applications`. Lệnh tải bản phát hành mới nhất, kiểm xong mới thay app (app cũ vào Thùng rác);
-đang mở app thì thoát rồi mở lại để chạy bản mới. Chỉ muốn xem có bản mới không: thay `apply --yes` bằng `check`. Bỏ `--yes` để xem trước các bước mà chưa làm gì.
-App cũ hơn 1.10.0 chưa có lệnh này: tải `.zip` ở trang [Releases](https://github.com/KmSlime/mac-cleaner/releases/latest) một lần, từ đó về sau dùng lệnh trên.
-Cài bằng `install.sh` (có lệnh `mac-cleaner`): `mac-cleaner self-update apply --yes`.
+**Ứng dụng**
 
-Chi tiết — nút **Cài đặt** (cuối sidebar của app) hoặc lệnh `self-update`:
+```sh
+mac-cleaner uninstall --list                       # app lâu không mở
+mac-cleaner uninstall <tên|bundle id|.app>         # xem trước: app + file liên quan; thêm --yes để gỡ (→ Thùng rác)
+mac-cleaner updates [--offline]                    # bản cập nhật app (Sparkle, Homebrew cask) + macOS — chỉ liệt kê
+```
 
-- **Kiểm tra / cập nhật tay:** `self-update check` hỏi GitHub bản phát hành mới nhất của repo này; `self-update apply` xem trước các bước, thêm `--yes` để cài.
-  Bản clone git: `git fetch --tags` rồi fast-forward tới đúng tag và chạy lại `install.sh` (từ chối khi còn thay đổi chưa commit).
-  App tải về: tải `MacCleaner-<bản>-macos-universal.zip` + `.sha256` từ bản phát hành, kiểm SHA-256, bundle id, số phiên bản và chữ ký; app cũ vào Thùng rác rồi mới đặt app mới vào chỗ cũ.
-- **Tự kiểm tra theo lịch — mặc định TẮT, phải đồng ý mới bật:** `self-update auto on --yes` (hoặc tick ô đồng ý trong Cài đặt) tạo LaunchAgent của user `local.maccleaner.selfupdate`, chạy hằng ngày hoặc thứ Hai hằng tuần vào giờ bạn chọn (`--every`, `--at`).
-  Mỗi lần chạy là một request HTTPS tới `api.github.com` để đọc số phiên bản, không gửi dữ liệu nào của máy. Mặc định chỉ thông báo khi có bản mới; `--install` cho phép tự cài. `self-update auto off` gỡ lịch.
-- Chỉ tải từ `github.com` / `api.github.com` / `*.githubusercontent.com` qua HTTPS. Cấu hình ở `<thư mục dữ liệu>/self-update.json`.
+**Dung lượng**
 
-## Quyền quản trị (cấp một lần, thu hồi được)
+```sh
+mac-cleaner analyze [path] [--depth 3]             # bản đồ dung lượng
+mac-cleaner large [path…] --min 500M --older 180d  # file lớn và lâu không dùng
+mac-cleaner dupes [path…] --min-size 5M            # file trùng (luôn giữ một bản mỗi nhóm)
+mac-cleaner cloud                                  # iCloud/Dropbox/…: bản local so với chỉ còn trên cloud
+mac-cleaner junk                                   # rác hệ thống mở rộng: cache trình duyệt/app, log container, plist hỏng…
+```
 
-Vài việc cần root: `sfltool dumpbtm` (đọc login item — macOS hỏi mật khẩu mỗi lần) và mấy tác vụ bảo trì. Thay vì hỏi mật khẩu mãi hay lưu mật khẩu, `admin grant <id> --yes` (hoặc nút **Cấp** trong Cài đặt) hiện hộp thoại quản trị của macOS **một lần** và ghi `/etc/sudoers.d/mac-cleaner`: mỗi lệnh một dòng `NOPASSWD`, chỉ cho user hiện tại, tham số cố định. Sau đó mac-cleaner chạy đúng lệnh đó qua `sudo -n`, không hỏi lại.
+**Hệ thống**
+
+```sh
+mac-cleaner status [--json]                        # sức khoẻ máy: ổ, RAM/swap, CPU, pin, mạng, thiết bị, cảnh báo
+mac-cleaner startup list                           # mục khởi động (LaunchAgent, login item)
+mac-cleaner startup disable|enable <label> --yes   # tắt/bật một mục cấp user (hoàn tác được)
+mac-cleaner audit [--gatekeeper]                   # phần mềm bám trụ + chữ ký mã (mặc định offline)
+mac-cleaner privacy list                           # dấu vết trình duyệt, quyền TCC
+mac-cleaner privacy reset <dịch vụ> <bundle id> --yes     # thu hồi một quyền của một app
+mac-cleaner maintain list                          # tác vụ bảo trì cấp user
+mac-cleaner maintain run <tác vụ> --yes            # chạy một tác vụ; tác vụ cần sudo chỉ in lệnh, trừ khi đã cấp quyền (mục 6)
+```
+
+**Cập nhật và quyền:** `mac-cleaner self-update …` ([mục 2](#2-cập-nhật)), `mac-cleaner admin …` ([mục 6](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được)).
+
+**Phân loại cả ổ đĩa** (chạy trong thư mục clone, chỉ đọc):
+
+```sh
+python3 scripts/classify.py --report latest        # phân loại report mới nhất: NÊN XOÁ / CÂN NHẮC / GIỮ
+python3 scripts/classify.py --fs                   # quét toàn bộ hệ thống file từ / (không sudo)
+python3 scripts/classify.py --fs --root ~/Library --root ~/Developer --out reports   # chỉ vài thư mục, ghi kết quả ra file
+```
+
+Report và log nằm ở `~/Library/Application Support/MacCleaner` (app và lệnh `mac-cleaner` dùng chung). Trong thư mục `reports/` có `report-<giờ>.html` là report tĩnh mở bằng trình duyệt: tick chọn rồi copy lệnh dọn.
+
+---
+
+## 6. Quyền quản trị (cấp một lần, thu hồi được)
+
+Vài việc cần quyền root: đọc login item (`sfltool dumpbtm` — macOS hỏi mật khẩu mỗi lần) và mấy tác vụ bảo trì. Thay vì hỏi mật khẩu mãi hay lưu mật khẩu, bạn **cấp một lần** cho đúng những lệnh cố định dưới đây:
+
+- Trong app: **Cài đặt** → **Cấp**.
+- Dòng lệnh: `mac-cleaner admin grant <id> --yes` (hoặc `all`).
+
+macOS hiện hộp thoại quản trị **một lần**; sau đó Mac Cleaner chạy đúng lệnh đó mà không hỏi lại.
 
 | id | Lệnh được cấp | Tác dụng |
 |---|---|---|
@@ -161,90 +282,54 @@ Vài việc cần root: `sfltool dumpbtm` (đọc login item — macOS hỏi m�
 | `spotlight-reindex` | `mdutil -E /` | đánh chỉ mục lại Spotlight |
 | `font-cache-system` | `atsutil databases -remove` | xoá cache font |
 
-- Không lưu mật khẩu ở đâu cả. Mật khẩu admin cất trong Keychain với "Always Allow" thì mọi tiến trình của user đọc được — tức là root cho mọi thứ, thay vì root cho đúng năm lệnh cố định ở trên.
-- File do root sở hữu (0440), được `visudo -c` kiểm trước khi cài. `admin revoke <id>|all --yes` gỡ; không còn quyền nào thì file bị xoá. `admin list` xem trạng thái.
-- Cố ý không cấp được: `tmutil deletelocalsnapshots <ngày>` (tham số tự do, không hoàn tác) và `periodic` (chạy script từ thư mục user có thể ghi).
+- **Xem / thu hồi:** `mac-cleaner admin list`, `mac-cleaner admin revoke <id>|all --yes` (hoặc trong Cài đặt).
+- **Không lưu mật khẩu ở đâu cả.** Mật khẩu admin cất trong Keychain với "Always Allow" thì mọi tiến trình của bạn đọc được — tức là root cho mọi thứ, thay vì root cho đúng năm lệnh cố định ở trên.
+- Quyền chỉ cấp cho tài khoản của bạn, tham số của lệnh cố định, không sửa được.
 
-## Nhúng vào app khác (giao thức host ↔ board)
+---
 
-| Hướng | Gọi | Ý nghĩa |
-|---|---|---|
-| host → board | `window.render(report)` | hiện report (sau `scan --json` hoặc file `report-*.json`); nếu trước đó có `scanStarted` thì tự bật popup Đề xuất xoá |
-| host → board | `window.scanStarted(first)` · `window.scanFailed(msg)` · `window.log(line)` | trạng thái quét (dòng `▸ …` là bước hiện tại) |
-| host → board | `window.cleaned(result)` | JSON của `clean --json` |
-| host → board | `window.applyTheme({bg, surface, text, muted, accent, danger, ok, warn, info?, surface2?, line?, faint?, onAccent?, font?, mono?, scale?, dark})` | đồng bộ theme (màu hex `#rrggbb`); `applyTheme(null)` về theme mặc định. Không gọi → theme của mac-cleaner |
-| host → board | `window.openProposal()` | mở popup Đề xuất xoá |
-| host → board | `window.settings(kind, action, result)` | trả lời cho message `selfupdate:`/`admin:` (JSON của lệnh, hoặc `{"error": …}`). Nút Cài đặt chỉ hiện sau lần gọi đầu — host không hỗ trợ thì không gọi |
-| board → host | `scan` · `terminal` · `copy:<text>` · `reveal:<path>` · `clean:{"ids":[…],"mode":"trash"\|"permanent","yes":bool,"force":bool}` | qua `webkit.messageHandlers.cleaner` |
-| board → host | `selfupdate:{"action":"status"\|"check"\|"apply"\|"on"\|"off", "every", "at", "install", "consent"}` · `admin:{"action":"list"\|"grant"\|"revoke", "ids":[…]}` | ngăn Cài đặt; `on` cần `consent: true` |
+## 7. Dùng với Claude Code
 
-Chạy app với thư mục dữ liệu khác: `MACCLEANER_DATA=/đường/dẫn open -a ~/Applications/MacCleaner.app` (dùng chung biến với lệnh `mac-cleaner`).
+Cài plugin (Cách 2 hoặc Cách 3 ở [mục 1](#1-cài-đặt)) rồi nhờ Claude kiểm kê hay dọn máy — skill `mac-cleaner` biết dùng các lệnh trên.
 
-## Hook xin duyệt (khi dùng qua Claude Code)
+**Claude luôn phải hỏi bạn trước khi làm thật.** Plugin có hook xin duyệt: trước mọi lệnh thay đổi máy, Claude Code **phải hỏi bạn duyệt**, kể cả ở auto mode. Lệnh xem trước chạy bình thường. Hook không chặn cứng: bạn luôn là người quyết.
 
-Plugin có hook `PreToolUse`: trước khi agent chạy lệnh **làm thật** — `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`, `maintain run … --yes`, `self-update apply … --yes`, `self-update auto on … --yes`, `admin grant|revoke … --yes`, `mo clean|purge|uninstall|optimize|installer` (nếu bạn tự cài Mole) không kèm `--dry-run`, hay lệnh đụng tới Thùng rác — Claude Code **phải hỏi bạn duyệt**, kể cả ở auto mode. Lệnh xem trước chạy bình thường. Hook không chặn cứng: bạn luôn là người quyết.
+Những lệnh phải duyệt: `mac-cleaner clean|uninstall … --yes`, `startup disable|enable … --yes`, `privacy reset … --yes`, `maintain run … --yes`, `self-update apply … --yes`, `self-update auto on … --yes`, `admin grant|revoke … --yes`, lệnh đụng tới Thùng rác, và `mo clean|purge|uninstall|optimize|installer` không kèm `--dry-run` (nếu bạn tự cài Mole).
 
-## Mức an toàn
+---
 
-| Mức | Ý nghĩa | Ví dụ |
-|---|---|---|
-| `safe` | dọn không mất dữ liệu, app tự tạo lại | `~/Library/Caches/*` (cache của macOS `com.apple.*` để mức `review`), `~/Library/Logs/*`, cache trong Containers, simulator unavailable, backup cũ (đã có bản mới hơn), extension editor obsolete |
-| `review` | dọn được nhưng nên xem | **Xcode DerivedData** (luôn được đề xuất, không bao giờ dọn tự động — lần build sau lâu hơn), build artifact (node_modules, Pods, .venv…; vừa dùng trong 7 ngày thì để `info`), cache tải lại rất lâu (`ms-playwright`, `JetBrains`), installer .dmg/.pkg/.xip, iOS DeviceSupport, Archives, `~/.cache/*`, bản extension cũ, leftover app (Containers, Preferences, `Application Support/<bundle id>` — chỉ khi không còn app, Spotlight cũng không thấy, và 30+ ngày không được ghi), LaunchAgent mồ côi (chương trình của nó không còn), `/Library/Caches` |
-| `info` | kiểm kê (xoá được khi chọn đích danh) | ứng dụng, plugin, extension đang dùng, git, backup mới nhất |
-| `protected` | không dọn tự động (chỉ khi chọn đích danh) | cache đang là dữ liệu sống: `~/Library/Caches/pypoetry` (virtualenv), `org.R-project.R` (renv), `com.apple.FontRegistry`, `com.apple.Spotlight`; Keychains, `~/.ssh`, `~/.gnupg`; **mọi thư mục trong `~/Library` ngoài** `Caches`, `Logs`, `Containers`, `Group Containers`, `Preferences`, `Developer` (dữ liệu ứng dụng, thư mục đồng bộ…); **mọi thư mục ẩn ở home ngoài** vùng cache `~/.cache`, `~/.npm`, `~/.gradle/caches` (dữ liệu, model, cấu hình của các tool) |
+## 8. Giới hạn và câu hỏi thường gặp
 
-`clean` **kiểm lại từng mục lúc chạy** (không tin report): phải là `safe`/`review`, còn tồn tại, không protected,
-nằm trong `~` (sâu ≥ 2 cấp) hoặc `/Library/Caches`, `/Library/Logs`; lệnh đặc biệt chỉ cho phép `xcrun simctl delete`.
-`--force` (chỉ đi kèm `--ids`, tức là chọn đích danh) bỏ qua mức an toàn và vùng bảo vệ nhưng **vẫn chặn cứng**: SIP và
-cây hệ thống (`/System`, `/usr` ngoài `/usr/local`, `/etc`, `/var`, `/Library/Keychains`, `/Library/Extensions`…), thư mục gốc
-(`/Applications`, `/Library/Application Support`, `/Users/*`, `/Users/Shared`, `/opt/homebrew`…; so sánh không phân biệt hoa thường
-vì APFS), **phần mềm bảo mật / quản lý thiết bị** (EDR, MDM — xoá có thể bị coi là can thiệp), và thư mục Mac Cleaner đang dùng;
-với mục Thùng rác thì `--force` nghĩa là đổ Thùng rác. Cache của **app đang chạy** được bỏ qua (`skip`) — đóng app rồi dọn.
-Dữ liệu trình quản lý mật khẩu, keychain, ssh/gpg, ví, app xác thực không bao giờ bị coi là "sót lại".
-Các rào này học từ cách [Mole](https://github.com/tw93/mole) vận hành và được viết lại cho mac-cleaner (không chép mã).
-Xoá = **chuyển vào Thùng rác** (`/usr/bin/trash` trên macOS 15+; macOS 13–14 chuyển thẳng vào `~/.Trash`) — khôi phục được; đổ Thùng rác để lấy lại dung lượng. Mỗi lần dọn ghi `logs/clean-<ts>.jsonl`.
+**Xoá nhầm thì lấy lại thế nào?** Mở Thùng rác và kéo mục đó về chỗ cũ (log dọn ghi lại đường dẫn gốc của từng mục). Chỉ *Xoá vĩnh viễn* và *Đổ Thùng rác* là không lấy lại được — cả hai đều hỏi xác nhận riêng.
 
-## Nguồn dữ liệu
+**Dọn xong sao dung lượng trống chưa tăng?** Mục vừa dọn còn nằm trong Thùng rác; đổ Thùng rác mới lấy lại dung lượng. Dung lượng hiện lúc quét là ước lượng; con số thật xem trước/sau khi dọn (app và dòng lệnh đều in).
 
-| Nhóm | Nguồn |
-|---|---|
-| applications | `/Applications`, `~/Applications`, `/System/Applications` — `Info.plist` (tên, version, bundle id), App Store / thủ công / macOS |
-| plugins | `pluginkit -mAvvv` (app extension + app cha), `{/,~/}Library/{Internet Plug-Ins, Audio/Plug-Ins, QuickLook, Spotlight, PreferencePanes, Input Methods, Services, …}`, `systemextensionsctl list` |
-| extensions | `~/.<editor>/extensions/*/package.json` (mọi editor lưu extension theo kiểu này), `<Chromium browser>/<profile>/Extensions/<id>/<ver>/manifest.json` |
-| git | `which -a git`, mọi thư mục có `.git` trong `~` (bỏ Library, node_modules, cache…) và `/opt/homebrew` — branch, remote, số file dirty, commit cuối, dung lượng `.git` |
-| caches | `~/Library/{Caches,Logs}`, `~/Library/Containers/*/Data/Library/Caches`, `/Library/{Caches,Logs}`, Xcode DerivedData/DeviceSupport/Archives, `simctl list devices unavailable`, `~/.npm`, `~/.gradle/caches`, `~/.cache/*`… |
-| junk | build artifact khi đi qua `~`, installer trong Downloads/Desktop/Documents, file backup trên toàn volume Data (`find -x`, gom theo thư mục + tên gốc, giữ bản mtime mới nhất), Containers/Preferences không khớp bundle id nào đang cài, Thùng rác |
+**Gõ lệnh `self-update` báo lỗi "invalid choice"?** App đang cài cũ hơn 1.10.0. Dùng lệnh một dòng ở [mục 2](#2-cập-nhật) — chạy được với mọi phiên bản.
 
-Tính năng trong `mclib/features/` đọc thêm: `launchctl`/`sfltool dumpbtm` (khởi động — lệnh này hỏi mật khẩu admin nên kết quả được nhớ ở `~/Library/Application Support/MacCleaner/dumpbtm-cache.json`, chỉ hỏi lại khi CSDL login item của macOS đổi; xoá file để hỏi lại; `admin grant btm-read --yes` để không hỏi nữa), `codesign -dv`/cờ quarantine (bám trụ), TCC.db của user (quyền), Spotlight `kMDItemLastUsedDate` (app lâu không mở), appcast Sparkle + `brew outdated --cask` + `softwareupdate -l` (cập nhật), `st_blocks`/`SF_DATALESS` (dung lượng, cloud). Đối chiếu với CleanMyMac: `docs/CLEANMYMAC-PARITY.md`.
+**Cập nhật xong macOS hỏi lại quyền?** App ký ad-hoc nên sau khi thay app, macOS có thể hỏi lại Full Disk Access, Automation.
 
-## Giới hạn đã biết
+**Cập nhật trong app có cập nhật lệnh `mac-cleaner` không?** Không. App ở `~/Applications` và bản clone chứa lệnh `mac-cleaner` là hai bản cài riêng: cập nhật từ app chỉ thay app; `mac-cleaner self-update apply --yes` từ bản clone cập nhật cả hai.
 
-- Không dùng `sudo` ngoài mấy lệnh cố định bạn đã tự cấp bằng `admin grant`: `/Library/Caches` của root và cache hệ thống có thể từ chối; Thùng rác cần Full Disk Access cho terminal để đo.
-- Tự cập nhật: app ở `~/Applications` và bản clone chứa lệnh `mac-cleaner` là hai bản cài riêng — cập nhật từ app chỉ thay app; `mac-cleaner self-update apply --yes` từ bản clone cập nhật cả hai (qua `install.sh`). App ký ad-hoc nên sau khi thay app, macOS có thể hỏi lại quyền (Full Disk Access, Automation).
-- "Leftover" dựa trên bundle id của app + plugin đang cài, nên vẫn có thể nhầm với helper/daemon → để mức `review`.
-- Dung lượng là ước lượng `du -sk` lúc quét; dung lượng thật giải phóng xem `df` trước/sau (CLI và app đều in).
+**Không đo được Thùng rác, một số cache hệ thống từ chối dọn?** Mac Cleaner không dùng `sudo` (ngoài mấy lệnh cố định bạn tự cấp ở mục 6): `/Library/Caches` của root và cache hệ thống có thể từ chối; đo Thùng rác cần cấp Full Disk Access cho terminal.
 
-## Cấu trúc
+**"Phần sót lại của app đã gỡ" có chắc là rác không?** Mac Cleaner so với bundle id của app và plugin đang cài nên vẫn có thể nhầm với helper/daemon — vì vậy chúng nằm ở mức *Cân nhắc*, không bao giờ chọn sẵn.
 
-```
-maccleaner.py                  quét + dọn + xuất report (Python stdlib, có test)
-mclib/safety.py                rào an toàn dùng chung: vùng bảo vệ, chặn cứng SIP/thư mục gốc, app đang chạy, Thùng rác, log dọn
-mclib/featclean.py             nối `clean` với mục của tính năng (--ids, --category <tính năng>[:<kind>])
-mclib/registry.py              nạp tính năng từ mclib/features/ (lệnh con + report["features"]) — cách thêm: mclib/README.md
-mclib/features/                mỗi file một tính năng: status, junk, maintain, space (analyze/large), dupes, cloud, uninstall, updates, startup, persistence (audit), privacy, selfupdate (self-update), admin
-Web/board.html                 toàn bộ UI (HTML/CSS/JS thuần, offline) — dùng cho cả app và report tĩnh
-Sources/MacCleaner/main.swift  cửa sổ AppKit + WKWebView, cầu nối JS → maccleaner.py
-scripts/make-app.sh            đóng gói .app Universal (arm64 + x86_64; ARCHS="arm64" để build nhanh)
-scripts/make-icon.swift        vẽ icon app (cùng dấu hiệu với logo của board) → assets/AppIcon.icns
-install.sh                     cài một lệnh: Command Line Tools, app, lệnh mac-cleaner, plugin Claude Code
-skills/mac-cleaner/           skill duy nhất: kiểm kê + dọn + theo dõi bằng mac-cleaner (plugin Claude Code, manifest ở .claude-plugin/)
-hooks/                         hook xin duyệt: Claude phải hỏi trước mọi lệnh làm thật (--yes), chạy Mole không --dry-run, hay đụng Thùng rác
-scripts/classify.py            phân loại report / hệ thống file thành NÊN XOÁ · CÂN NHẮC · GIỮ (chạy sau mỗi scan qua hooks/post-scan/)
-hooks/post-scan/               hook chạy ngay sau scan (10-classify)
-tests/                         unit test (`TMPDIR=/tmp python3 -m unittest discover tests`)
-docs/architecture/             sơ đồ kiến trúc (HTML tương tác + ảnh sáng/tối), đối chiếu CleanMyMac ở docs/CLEANMYMAC-PARITY.md
-LICENSE                        MIT
-```
+**Lúc quét bị hỏi mật khẩu admin?** Đó là macOS hỏi khi đọc login item. Kết quả được nhớ lại, chỉ hỏi lại khi danh sách login item của máy đổi. Cấp `btm-read` một lần ở [mục 6](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được) thì không hỏi nữa.
+
+---
+
+## Tài liệu kỹ thuật
+
+Dành cho người đọc mã, nhúng dashboard vào app khác, hoặc đóng góp — [docs/TECHNICAL.md](docs/TECHNICAL.md):
+
+- Kiến trúc và sơ đồ ([bản tương tác](docs/architecture/architecture.html)), cấu trúc mã nguồn, build và test
+- Nguồn dữ liệu của từng nhóm quét
+- Mức an toàn đầy đủ, rào kiểm của `clean`, `--force`, xoá vĩnh viễn
+- Hook sau quét và `classify.py`
+- Cơ chế cập nhật (`self-update`, `update.sh`), quyền quản trị (`sudoers`)
+- Giao thức host ↔ board để nhúng vào app khác
+- Hook xin duyệt của plugin Claude Code, quy trình phát hành
+- Thêm một tính năng mới: [mclib/README.md](mclib/README.md) · Đối chiếu với CleanMyMac: [docs/CLEANMYMAC-PARITY.md](docs/CLEANMYMAC-PARITY.md)
 
 ## Giấy phép
 
