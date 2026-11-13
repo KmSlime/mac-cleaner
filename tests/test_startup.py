@@ -260,26 +260,69 @@ class DumpBtmCache(unittest.TestCase):
 
     def test_asks_once_until_btm_changes(self):
         run = self.run_fake()
-        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db), (0, "OUT", ""))
-        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db), (0, "OUT", ""))
+        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db, interactive=True), (0, "OUT", ""))
+        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db, interactive=True), (0, "OUT", ""))
         self.assertEqual(self.calls, 1)
         self.assertEqual(os.stat(self.cache).st_mode & 0o777, 0o600)
         with open(self.btm, "w") as f:
             f.write("changed")
-        startup.dumpbtm(run, cache=self.cache, db_dir=self.db)
+        startup.dumpbtm(run, cache=self.cache, db_dir=self.db, interactive=True)
         self.assertEqual(self.calls, 2)
 
-    def test_denied_is_remembered_but_timeout_is_not(self):
-        rc, out, err = startup.dumpbtm(self.run_fake(rc=1, out=""), cache=self.cache, db_dir=self.db)
-        rc2, _, err2 = startup.dumpbtm(self.run_fake(), cache=self.cache, db_dir=self.db)
-        self.assertEqual((rc, rc2, self.calls), (1, 1, 1))
-        self.assertIn(self.cache, err2)
+    def test_no_grant_unattended_never_runs_plain_sfltool(self):
+        seen = []
+
+        def run(cmd, timeout=30):
+            seen.append(cmd)
+            return 0, "OUT", ""
+        rc, out, err = startup.dumpbtm(run, cache=self.cache, db_dir=self.db)  # nothing cached, no grant
+        self.assertEqual((rc == 0, out), (False, ""))
+        self.assertIn("btm-read", err)
+        self.assertEqual(seen, [])  # not even a sudo attempt without a grant
+        failing = lambda cmd, timeout=30: (seen.append(cmd), (1, "", "sudo: a password is required"))[1]  # noqa: E731
+        rc, out, err = startup.dumpbtm(failing, cache=self.cache, db_dir=self.db, sudo=True)
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(seen, [[startup.SUDO, "-n", startup.SFLTOOL, "dumpbtm"]])
+        self.assertFalse(any(c[0] == startup.SFLTOOL for c in seen))
+
+    def test_failed_attempt_keeps_last_good_output_as_stale(self):
+        sudo_ok = lambda cmd, timeout=30: (0, "GOOD", "")  # noqa: E731
+        self.assertEqual(startup.dumpbtm(sudo_ok, cache=self.cache, db_dir=self.db, sudo=True), (0, "GOOD", ""))
+        with open(self.btm, "w") as f:
+            f.write("changed")
+        seen = []
+        failing = lambda cmd, timeout=30: (seen.append(cmd), (1, "", "denied"))[1]  # noqa: E731
+        rc, out, err = startup.dumpbtm(failing, cache=self.cache, db_dir=self.db, sudo=True)
+        self.assertEqual((rc, out), (0, "GOOD"))
+        self.assertTrue(err.startswith("stale:"))
+        self.assertEqual(len(seen), 1)
+        self.assertFalse(any(c[0] == startup.SFLTOOL for c in seen))
+        with open(self.cache) as f:
+            c = json.load(f)
+        self.assertEqual(c["good"]["out"], "GOOD")
+        self.assertEqual(c["last"]["rc"], 1)
+        # an interactive cancel does not overwrite the good output either
+        rc, out, err = startup.dumpbtm(failing, cache=self.cache, db_dir=self.db, interactive=True)
+        self.assertEqual((rc, out, err.startswith("stale:")), (0, "GOOD", True))
+        self.assertEqual(seen[-1], [startup.SFLTOOL, "dumpbtm"])
+        with open(self.cache) as f:
+            self.assertEqual(json.load(f)["good"]["out"], "GOOD")
+
+    def test_interactive_falls_back_to_plain_call_and_timeout_is_not_cached(self):
+        seen = []
+
+        def run(cmd, timeout=30):
+            seen.append(cmd)
+            return (0, "OUT", "") if cmd[0] == startup.SFLTOOL else (1, "", "sudo: a password is required")
+        self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db, sudo=True, interactive=True),
+                         (0, "OUT", ""))
+        self.assertEqual(seen, [[startup.SUDO, "-n", startup.SFLTOOL, "dumpbtm"], [startup.SFLTOOL, "dumpbtm"]])
         os.remove(self.cache)
-        startup.dumpbtm(lambda cmd, timeout=30: (None, "", "timeout"), cache=self.cache, db_dir=self.db)
+        startup.dumpbtm(lambda cmd, timeout=30: (None, "", "timeout"), cache=self.cache, db_dir=self.db,
+                        interactive=True)
         self.assertFalse(os.path.exists(self.cache))
 
-    def test_granted_runs_through_sudo_and_forgets_an_old_refusal(self):
-        startup.dumpbtm(self.run_fake(rc=1, out=""), cache=self.cache, db_dir=self.db)  # refused before the grant
+    def test_granted_runs_through_sudo(self):
         seen = []
 
         def run(cmd, timeout=30):
@@ -287,16 +330,12 @@ class DumpBtmCache(unittest.TestCase):
             return (0, "OUT", "") if cmd[0] == startup.SUDO else (1, "", "denied")
         self.assertEqual(startup.dumpbtm(run, cache=self.cache, db_dir=self.db, sudo=True), (0, "OUT", ""))
         self.assertEqual(seen, [[startup.SUDO, "-n", startup.SFLTOOL, "dumpbtm"]])
-        seen.clear()  # this command is not in the grant file → falls back to the plain call (macOS asks)
-        startup.dumpbtm(lambda cmd, timeout=30: (seen.append(cmd), (1, "", "sudo: a password is required"))[1],
-                        cache=None, db_dir=self.db, sudo=True)
-        self.assertEqual(seen, [[startup.SUDO, "-n", startup.SFLTOOL, "dumpbtm"], [startup.SFLTOOL, "dumpbtm"]])
 
     def test_no_cache_without_signature_or_path(self):
         run = self.run_fake()
-        startup.dumpbtm(run, cache=None, db_dir=self.db)
-        startup.dumpbtm(run, cache=self.cache, db_dir=os.path.join(self.tmp.name, "missing"))
-        startup.dumpbtm(run, cache=self.cache, db_dir=os.path.join(self.tmp.name, "missing"))
+        startup.dumpbtm(run, cache=None, db_dir=self.db, interactive=True)
+        startup.dumpbtm(run, cache=self.cache, db_dir=os.path.join(self.tmp.name, "missing"), interactive=True)
+        startup.dumpbtm(run, cache=self.cache, db_dir=os.path.join(self.tmp.name, "missing"), interactive=True)
         self.assertEqual(self.calls, 3)
         self.assertFalse(os.path.exists(self.cache))
 

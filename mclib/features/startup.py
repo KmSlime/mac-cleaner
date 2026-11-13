@@ -64,39 +64,64 @@ def btm_signature(db_dir=BTM_DB_DIR):
     return "|".join(parts) or None
 
 
-def dumpbtm(run=run_cmd, cache=None, db_dir=BTM_DB_DIR, timeout=60, sudo=False):
-    """(mã thoát, stdout, stderr) của `sfltool dumpbtm`. cache=đường dẫn file → dùng lại kết quả khi chữ ký CSDL BTM chưa đổi
-    (kể cả lần bị từ chối: không hỏi lại tới khi BTM đổi hoặc xoá file cache). Không cache khi lệnh không chạy được/quá giờ.
-    sudo=True (the user ran `admin grant btm-read`) → `sudo -n` first, no dialog at all; a refusal remembered from
-    before the grant is then ignored."""
+def _read_cache(cache):
+    try:
+        with open(cache, encoding="utf-8") as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(c, dict):
+        return {}
+    if "good" not in c and c.get("rc") == 0 and c.get("out"):  # file written by <= 1.11.2
+        c["good"] = dict(sig=c.get("sig"), out=c["out"], at=c.get("at"))
+    return c
+
+
+def dumpbtm(run=run_cmd, cache=None, db_dir=BTM_DB_DIR, timeout=60, sudo=False, interactive=False):
+    """(mã thoát, stdout, stderr) của `sfltool dumpbtm`.
+
+    `sfltool` needs admin authorization: without the `btm-read` grant (`admin grant btm-read`) macOS pops a password
+    dialog ("sfltool wants to make changes"). That dialog must only ever follow an explicit user action, so:
+    - interactive=False (default; scans, autoclean, hooks, app/host-triggered runs): the plain `sfltool` call is NEVER
+      made. Order: cached output for the current BTM signature → `sudo -n` (when sudo=True, silent) → the last
+      SUCCESSFUL output marked stale (rc 0, err "stale: …") → rc 1 with a "needs explicit refresh / admin grant
+      btm-read" error when nothing was ever cached.
+    - interactive=True (the user asked: `startup --refresh-btm`, `uninstall --refresh-btm`): same, but when `sudo -n`
+      does not work the plain call runs, with macOS's own password dialog.
+    cache=path → the last good output (`good`) is kept apart from the latest attempt (`last`), so a denied, cancelled
+    or timed-out run never overwrites good data. Good output is reused while the BTM signature is unchanged."""
     sig = btm_signature(db_dir) if cache else None
-    if sig:
-        try:
-            with open(cache, encoding="utf-8") as f:
-                c = json.load(f)
-            if c.get("sig") == sig and (c.get("rc") == 0 or not sudo):
-                err = c.get("err") or ""
-                if c.get("rc") != 0:
-                    err = (err.strip() + f" (kết quả nhớ từ lần trước; xoá {cache} để hỏi lại)").strip()
-                return c.get("rc"), c.get("out") or "", err
-        except (OSError, ValueError, AttributeError):
-            pass
-    rc = None
+    c = _read_cache(cache) if cache else {}
+    good = c.get("good") if isinstance(c.get("good"), dict) else None
+    if sig and good and good.get("sig") == sig and good.get("out"):
+        return 0, good["out"], ""
+    rc, out, err = None, "", ""
     if sudo:
         rc, out, err = run([SUDO, "-n", SFLTOOL, "dumpbtm"], timeout=timeout)
-    if rc != 0:  # no grant for this command (or sudo refused) → the plain call, with macOS's own password dialog
+    if rc != 0 and interactive:  # explicit user action → macOS's own password dialog is allowed
         rc, out, err = run([SFLTOOL, "dumpbtm"], timeout=timeout)
     if sig and rc is not None:
+        c["last"] = dict(sig=sig, rc=rc, err=err, at=time.strftime("%Y-%m-%d %H:%M:%S"))
+        if rc == 0:
+            c["good"] = dict(sig=sig, out=out, at=c["last"]["at"])
+        for k in ("sig", "rc", "out", "err", "at"):
+            c.pop(k, None)
         try:
             os.makedirs(os.path.dirname(cache), exist_ok=True)
             tmp = cache + ".tmp"
             fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(dict(sig=sig, rc=rc, out=out, err=err, at=time.strftime("%Y-%m-%d %H:%M:%S")), f)
+                json.dump(c, f)
             os.replace(tmp, cache)
         except OSError:
             pass
-    return rc, out, err
+    if rc == 0:
+        return rc, out, err
+    why = (err or "").strip()[:120]
+    if good and good.get("out"):
+        return 0, good["out"], f"stale: BTM changed since {good.get('at') or '?'}; run with --refresh-btm to update" \
+            + (f" ({why})" if why else "")
+    return (rc or 1), "", "needs explicit refresh (--refresh-btm) or admin grant btm-read" + (f" ({why})" if why else "")
 
 
 # ---------- parse ----------
@@ -245,7 +270,7 @@ def user_agents_dir(home=None):
     return os.path.join(home or S.HOME, "Library", "LaunchAgents")
 
 
-def gather(home=None, run=run_cmd, uid=None, system_dirs=SYSTEM_DIRS):
+def gather(home=None, run=run_cmd, uid=None, system_dirs=SYSTEM_DIRS, interactive=False):
     """Kiểm kê (chỉ đọc). Trả {"records": [...], "errors": [...], "btm_skipped": n}."""
     uid = os.getuid() if uid is None else uid
     records, errors = [], []
@@ -282,9 +307,12 @@ def gather(home=None, run=run_cmd, uid=None, system_dirs=SYSTEM_DIRS):
             r["launchctl_disabled"] = overrides[r["label"]]
 
     real = run is run_cmd  # chỉ cache và dùng quyền đã cấp với lệnh thật, không với fake của test
-    rc, out, err = dumpbtm(run, cache=BTM_CACHE if real else None, sudo=real and admin.installed())
+    rc, out, err = dumpbtm(run, cache=BTM_CACHE if real else None, sudo=real and admin.installed(),
+                        interactive=interactive or not real)  # a fake run (tests) can't pop a dialog
     btm = parse_btm(out) if rc == 0 else []
-    if rc != 0 or not btm:
+    if rc == 0 and (err or "").startswith("stale:"):
+        errors.append("sfltool dumpbtm: " + err.strip()[:160])
+    elif rc != 0 or not btm:
         errors.append("sfltool dumpbtm không có dữ liệu" + (f": {(err or '').strip()[:120]}" if err else ""))
     by_id = {b["identifier"]: b for b in btm if b["identifier"]}
     by_plist = {r["plist"]: r for r in records}
@@ -483,7 +511,7 @@ def cli(args):
             print(f"cần label: startup {args.action} <label> [--yes]")
             return 1
         return change(args.action, args.label, yes=args.yes)
-    g = gather()
+    g = gather(interactive=bool(getattr(args, "refresh_btm", False)))
     if args.json:
         print(json.dumps({"summary": summarize(g), "items": entries(g)}, ensure_ascii=False))
         return 0
@@ -515,4 +543,6 @@ def register(subparsers):
     p.add_argument("label", nargs="?", help="label của LaunchAgent (với disable/enable)")
     p.add_argument("--yes", action="store_true", help="thực hiện (không có: chỉ xem trước)")
     p.add_argument("--json", action="store_true", help="in JSON (với list)")
+    p.add_argument("--refresh-btm", action="store_true",
+                   help="cho phép hỏi mật khẩu admin (hộp thoại của macOS) để đọc lại sfltool dumpbtm; mặc định không bao giờ hỏi")
     p.set_defaults(func=cli)
