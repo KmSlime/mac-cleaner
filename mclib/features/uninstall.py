@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from mclib import registry, safety as S
-from mclib.features import startup
+from mclib.features import admin, startup
 
 NAME = "uninstall"
 KIND = "app-uninstall"
@@ -385,9 +385,10 @@ def _entry(path, safety, delete_mode, reason, blocked, **extra):
 
 
 def plan(query, home=None, roots=None, run=S.run, run_err=run_all, spotlight=True, btm=True, system=True,
-         ps=None, running_ids=None):
+         ps=None, running_ids=None, interactive=False):
     """Kế hoạch gỡ (CHỈ ĐỌC): {query, app, error, candidates, blocked, guide, items[], bundled[], login_items[]}.
-    items[0] là chính app; mục delete_mode 'trash' là thứ --yes sẽ chuyển vào Thùng rác."""
+    items[0] là chính app; mục delete_mode 'trash' là thứ --yes sẽ chuyển vào Thùng rác.
+    interactive=True (--refresh-btm) mới được hỏi mật khẩu admin để đọc login item; mặc định không bao giờ hỏi."""
     home = home or S.HOME
     roots = roots or app_roots(home)
     res = dict(query=query, app=None, error=None, candidates=[], blocked=None, guide=[], items=[], bundled=[],
@@ -442,7 +443,7 @@ def plan(query, home=None, roots=None, run=S.run, run_err=run_all, spotlight=Tru
                                      bundle_id=c["bundle_id"]))
     if btm:
         if run is S.run:  # lệnh thật → dùng chung cache của startup để không hỏi mật khẩu lại
-            rc, out, _ = startup.dumpbtm(cache=startup.BTM_CACHE)
+            rc, out, _ = startup.dumpbtm(cache=startup.BTM_CACHE, sudo=admin.installed(), interactive=interactive)
             out = out if rc == 0 else ""
         else:
             out = run(["/usr/bin/sfltool", "dumpbtm"], timeout=30)
@@ -615,7 +616,7 @@ def cli(args):
         print("cần tên app, đường dẫn .app hoặc bundle id (hoặc --list)")
         return 1
     log = (lambda m: None) if args.json else print
-    pl = plan(" ".join(args.query), spotlight=not args.no_spotlight)
+    pl = plan(" ".join(args.query), spotlight=not args.no_spotlight, interactive=bool(getattr(args, "refresh_btm", False)))
     print_plan(pl, log)
     res = None
     if args.yes and not pl["error"]:
@@ -638,5 +639,7 @@ def register(subparsers):
     p.add_argument("--yes", action="store_true", help="thực thi: app + file liên quan vào Thùng rác")
     p.add_argument("--list", action="store_true", help="liệt kê app, lần mở cuối, dung lượng kèm file liên quan")
     p.add_argument("--no-spotlight", action="store_true", help="không hỏi Spotlight khi tìm app")
+    p.add_argument("--refresh-btm", action="store_true",
+                   help="cho phép hỏi mật khẩu admin (hộp thoại macOS) để đọc login item; mặc định không bao giờ hỏi")
     p.add_argument("--json", action="store_true", help="in JSON")
     p.set_defaults(func=cli)

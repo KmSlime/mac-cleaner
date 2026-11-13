@@ -101,9 +101,14 @@ LICENSE                        MIT
 
 Features in `mclib/features/` also read:
 
-- `launchctl` / `sfltool dumpbtm` (startup). `sfltool` asks for the admin password, so its result is cached in
-  `<data>/dumpbtm-cache.json` and asked again only when the macOS login-item database changes. Delete the file to be
-  asked again; `admin grant btm-read --yes` removes the prompt (section 9).
+- `launchctl` / `sfltool dumpbtm` (startup, uninstall). `sfltool` needs admin authorization (macOS dialog "sfltool wants
+  to make changes"), so since 1.11.3 the dialog only follows an explicit user action. `startup.dumpbtm(..., interactive=False)`
+  (default; scans, autoclean, hooks, app/host runs) never makes the plain call: cached output for the current BTM
+  signature, else `sudo -n` when `admin grant btm-read` is in place, else the last successful output marked `stale:`,
+  else an error asking for `--refresh-btm` or the grant. `startup --refresh-btm` and `uninstall <app> --refresh-btm`
+  pass `interactive=True` and may show the dialog. The cache file keeps the last good output (`good`) apart from the
+  latest attempt (`last`), so a denied or cancelled run never overwrites good data. `admin grant btm-read --yes` removes
+  the prompt for good (section 9).
 - `codesign -dv` / the quarantine flag (persistence audit), the user's TCC.db (privacy), Spotlight
   `kMDItemLastUsedDate` (apps not opened for long), Sparkle appcasts + `brew outdated --cask` + `softwareupdate -l`
   (updates), `st_blocks` / `SF_DATALESS` (space, cloud).

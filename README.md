@@ -341,7 +341,7 @@ Những lệnh phải duyệt: `mac-cleaner clean|uninstall … --yes`, `startup
 
 **"Phần sót lại của app đã gỡ" có chắc là rác không?** Mac Cleaner so với bundle id của app và plugin đang cài nên vẫn có thể nhầm với helper/daemon — vì vậy chúng nằm ở mức *Cân nhắc*, không bao giờ chọn sẵn.
 
-**Lúc quét bị hỏi mật khẩu admin?** Đó là macOS hỏi khi đọc login item. Kết quả được nhớ lại, chỉ hỏi lại khi danh sách login item của máy đổi. Cấp `btm-read` một lần ở [mục 6](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được) thì không hỏi nữa.
+**Lúc quét bị hỏi mật khẩu admin?** Từ 1.11.3 quét (kể cả định kỳ/tự động) không bao giờ hiện hộp thoại này: nếu chưa cấp `btm-read` và danh sách login item đã đổi, Mac Cleaner dùng kết quả cũ lần trước (ghi chú "stale") hoặc báo thiếu dữ liệu. Chỉ khi bạn chủ động chạy `startup --refresh-btm` / `uninstall <app> --refresh-btm` mới được hỏi mật khẩu. Cấp `btm-read` một lần ở [mục 6](#6-quyền-quản-trị-cấp-một-lần-thu-hồi-được) thì không hỏi nữa và dữ liệu luôn mới.
 
 ---
 

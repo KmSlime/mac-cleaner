@@ -122,6 +122,21 @@ class Fixture(unittest.TestCase):
                       running_ids=kw.pop("running_ids", set()), **kw)
 
 
+class BtmNeverPrompts(Fixture):
+    def test_real_run_reads_btm_with_grant_and_without_prompting(self):
+        from unittest import mock
+        calls = []
+        fr = fake_run()
+        with mock.patch.object(U.S, "run", fr), \
+                mock.patch.object(U.admin, "installed", return_value=True), \
+                mock.patch.object(U.startup, "dumpbtm", side_effect=lambda **kw: (calls.append(kw), (0, "", ""))[1]):
+            PLAN("Demo", home=self.home, roots=self.roots, run=fr, run_err=fake_codesign({self.demo: TEAM}),
+                 spotlight=False, btm=True, system=False, ps=[], running_ids=set())
+            PLAN("Demo", home=self.home, roots=self.roots, run=fr, run_err=fake_codesign({self.demo: TEAM}),
+                 spotlight=False, btm=True, system=False, ps=[], running_ids=set(), interactive=True)
+        self.assertEqual([(k["sudo"], k["interactive"]) for k in calls], [(True, False), (True, True)])
+
+
 class FindAndRelated(Fixture):
     def test_find_by_name_bundle_id_and_path(self):
         for q in ("Demo", "demo.app", "com.example.demo", self.demo):
@@ -216,7 +231,7 @@ class Refusals(Fixture):
 class Execute(Fixture):
     def run_cli(self, *argv):
         with mock.patch.object(U, "app_roots", return_value=self.roots), \
-                mock.patch.object(U, "plan", side_effect=lambda q, spotlight=True: self.plan(q)), \
+                mock.patch.object(U, "plan", side_effect=lambda q, spotlight=True, **kw: self.plan(q)), \
                 mock.patch.object(safety, "HOME", self.home), \
                 mock.patch.object(safety, "ALLOWED_ROOTS", [self.home]), \
                 mock.patch.object(safety, "DATA", os.path.join(self.home, "data")), \
