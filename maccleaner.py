@@ -61,7 +61,9 @@ BACKUP_FIND = ["*.bak", "*.bak[0-9]*", "*.bak.*", "*.backup", "*.backup.*", "*.b
                "*~", "*_backup*", "*-backup*", "*.prev"]
 BACKUP_SKIP = ("/opt/homebrew/Cellar/", "/Library/Ruby/", "/node_modules/", "/build/", "/DerivedData/",
                "/Library/Containers/")
-BACKUP_SKIP_RE = re.compile(r"/\.[^/]+/extensions/")  # extension của editor: bản cũ do editor tự quản lý
+BACKUP_SKIP_RE = re.compile(r"/\.[^/]+/extensions/"  # extension của editor: bản cũ do editor tự quản lý
+                            r"|/(IndexedDB|Local Storage|Session Storage|Service Worker|Sync Data|Partitions|Local Extension Settings"
+                            r"|Extension State|Sync App Settings)/")  # kho nội bộ của trình duyệt/Electron: .bak/.old là file CSDL, không phải backup của người dùng
 BROWSERS = {"Google Chrome": "Google/Chrome", "Microsoft Edge": "Microsoft Edge", "Brave": "BraveSoftware/Brave-Browser",
             "Arc": "Arc/User Data", "Chromium": "Chromium", "Vivaldi": "Vivaldi", "Opera": "com.operasoftware.Opera"}
 PLUGIN_DIRS = ["Internet Plug-Ins", "Audio/Plug-Ins/Components", "Audio/Plug-Ins/VST", "Audio/Plug-Ins/VST3",

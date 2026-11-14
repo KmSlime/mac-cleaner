@@ -28,6 +28,11 @@ class BackupSkip(unittest.TestCase):
         self.assertTrue(mc.BACKUP_SKIP_RE.search("/Users/u/.someeditor/extensions/x-1.0/a.bak"))
         self.assertFalse(mc.BACKUP_SKIP_RE.search("/Users/u/Documents/a.bak"))
 
+    def test_browser_and_electron_internal_stores_skipped(self):
+        for sub in ("IndexedDB/x.leveldb", "Local Storage/leveldb", "Partitions/a/Service Worker", "Sync Data/LevelDB"):
+            self.assertTrue(mc.BACKUP_SKIP_RE.search(f"/Users/u/Library/Application Support/Edge/Default/{sub}/000003.log.old"), sub)
+        self.assertFalse(mc.BACKUP_SKIP_RE.search("/Users/u/Library/Application Support/Edge/Preferences.bak"))
+
 
 class Versions(unittest.TestCase):
     def test_old_versions_numeric_not_lexical(self):
