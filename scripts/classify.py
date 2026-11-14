@@ -81,7 +81,29 @@ REPORT_CAN = {  # chức năng của "cân nhắc" theo loại mục trong repor
     "build-artifact": "build/dependency của dự án còn mới — xoá thì phải build/cài lại",
     "installer": "bản cài (.dmg/.pkg) — xoá được nếu đã cài xong",
     "device-support": "symbol iOS — cắm lại máy đó thì Xcode tải lại",
+    "xcode-deriveddata": "build trung gian của Xcode",
 }
+# Lý do + hệ quả cụ thể cho mục "an toàn" (thay câu chung "mac-cleaner xếp an toàn"); khoá = (loại, gợi ý đường dẫn).
+BROWSER_HINTS = ("Microsoft Edge", "/Google", "Chrome", "Firefox", "BraveSoftware", "com.microsoft.edgemac", "Vivaldi", "Arc")
+SAFE_BY_KIND = {
+    "log": ("log của app", "mất log cũ (chỉ cần khi gỡ lỗi); app ghi log mới"),
+    "dev-cache": ("cache công cụ dev", "lần cài/build sau tải lại (chậm hơn một lần)"),
+    "container-cache": ("cache trong container của app macOS", "app tự tạo lại; mở lần đầu chậm hơn"),
+    "user-cache": ("cache của app", "app tự tạo lại; mở lần đầu chậm hơn"),
+}
+
+
+def is_apple_cache(path):
+    return "/com.apple." in path or "/Containers/com.apple." in path
+
+
+def safe_text(it):
+    p, kind = it.get("path", ""), it.get("kind", "")
+    if any(h in p for h in BROWSER_HINTS) and "/Caches/" in p:
+        return "cache trình duyệt", "không mất đăng nhập/lịch sử/mật khẩu; trang tải lại lần đầu chậm hơn"
+    if is_apple_cache(p):
+        return "cache của dịch vụ macOS (com.apple.*)", "macOS tự tạo lại; dịch vụ đó chạy chậm hơn một lúc"
+    return SAFE_BY_KIND.get(kind, ("cache/log tự tạo lại", "tự tạo lại; lần dùng đầu chậm hơn"))
 
 
 def expand(p):
@@ -196,10 +218,16 @@ def classify_report(path, keep):
         if any(under(p, k) for k in keep):
             cls, why, effect = GIU, "người dùng đánh dấu giữ", "—"
         elif s == "safe":
-            cls, why, effect = XOA, it.get("note") or "mac-cleaner xếp an toàn", "chuyển vào Thùng rác (khôi phục được); dữ liệu tự tạo lại"
+            cls = XOA
+            why, effect = safe_text(it)
+            if it.get("note"):
+                why = it["note"]
+            effect += " · vào Thùng rác (khôi phục được)"
         elif s == "review":
             cls, why = CAN, REPORT_CAN.get(kind, it.get("note") or "mac-cleaner xếp cân nhắc")
             effect = it.get("note") or "xem mô tả"
+            if kind == "user-cache" and is_apple_cache(p):
+                why = "cache dịch vụ macOS (com.apple.*) đang chạy — xoá tay ít lợi, daemon tự tạo lại"
         else:
             cls, why, effect = GIU, it.get("note") or ("được bảo vệ" if s == "protected" else "chỉ kiểm kê (app, repo, plugin đang có)"), "—"
         rows.append(dict(path=p, size=it.get("size") or 0, files=None, cls=cls, why=why, effect=effect, source="report",
@@ -232,6 +260,65 @@ def human(n):
         n /= 1024
 
 
+SMALL_MB = 5  # mục nhỏ hơn mức này, cùng lý do + hệ quả → gộp một dòng cho đỡ nhiễu
+CAT_LABEL = {"applications": "Ứng dụng", "git": "Git repo (.git)", "junk": "Junk (artifact, installer, backup…)", "extensions": "Extension",
+             "plugins": "Plugin", "caches": "Cache và log"}
+
+
+def reclaim_line(rows, meta):
+    """Một dòng trả lời câu hỏi chính: dọn xong thì ổ trống thêm bao nhiêu. Chỉ cộng nguồn có id (report), không cộng chồng với fs."""
+    base = [r for r in rows if r["source"] == "report"] or rows
+    safe = sum(r["size"] for r in base if r["cls"] == XOA)
+    maybe = sum(r["size"] for r in base if r["cls"] == CAN)
+    free, total = meta["disk"]["free"], meta["disk"]["total"]
+    line = (f"**Giải phóng được: {human(safe)} an toàn (NÊN XOÁ), thêm tối đa {human(maybe)} nếu chọn CÂN NHẮC** "
+            f"→ ổ trống {human(free)} ({free * 100 / total:.1f}%) lên ~{human(free + safe)} / ~{human(free + safe + maybe)}.")
+    if free < 0.1 * total and safe < 0.05 * total:
+        line += f" Ổ đang {100 - free * 100 / total:.0f}% đầy mà phần dọn an toàn chỉ đủ {safe * 100 / total:.1f}% ổ — muốn trống hẳn phải chọn thêm trong mục *Ổ đang bị chiếm bởi*."
+    return line
+
+
+def eaters(rows, meta):
+    """Thứ chiếm ổ mà không nằm trong NÊN XOÁ: tổng theo loại (report) + gợi ý từ tính năng junk/space."""
+    by = defaultdict(int)
+    for r in rows:
+        if r["source"] == "report" and r["cls"] != XOA and r.get("category"):
+            by[r["category"]] += r["size"]
+    out = [(CAT_LABEL.get(c, c), n, "") for c, n in sorted(by.items(), key=lambda x: -x[1])[:5] if n >= 100 * 2 ** 20]
+    for k, v in (meta.get("junk_kinds") or {}).items():
+        if v.get("size", 0) >= 2 ** 30 and not v.get("cleanable"):
+            out.append((f"junk:{k}", v["size"], "chỉ liệt kê — tải lại/khôi phục rất lâu, bạn tự quyết"))
+    for t in (meta.get("space_top") or [])[:5]:
+        out.append((t["path"].replace(HOME, "~"), t["size"], "thư mục lớn nhất trong home (số đo của `space`)"))
+    return out
+
+
+def group_rows(rs, top):
+    """Mục lớn giữ riêng; mục nhỏ cùng (lý do, hệ quả) gộp một dòng. Trả list dòng đã sắp theo dung lượng."""
+    big = [r for r in rs if r["size"] >= SMALL_MB * 2 ** 20][:top]
+    small = defaultdict(list)
+    for r in rs:
+        if r["size"] < SMALL_MB * 2 ** 20:
+            small[(r["why"], r["effect"])].append(r)
+    out = list(big)
+    for (why, effect), g in small.items():
+        if len(g) == 1:
+            out.append(g[0])
+            continue
+        names = []
+        for r in g:  # tên thư mục; trùng tên (Caches, repo cùng tên) thì thêm thư mục cha
+            q = r["path"].rstrip("/").split("/")
+            n = q[-1] if q[-1] not in ("Caches", "Logs") and q[-1] not in names else "/".join(q[-2:])
+            if n not in names:
+                names.append(n)
+            if len(names) == 3:
+                break
+        names = ", ".join(names)
+        out.append(dict(path=f"({len(g)} mục nhỏ <{SMALL_MB} MB: {names}…)", size=sum(r["size"] for r in g), why=why, effect=effect,
+                        source=g[0]["source"], grouped=len(g)))
+    return sorted(out, key=lambda r: -r["size"])[:top + 5]
+
+
 def render(rows, meta, top):
     out = [f"# Phân loại dọn dẹp — {meta['generated']}", "",
            f"Nguồn: {', '.join(meta['sources'])}. Ổ: trống {human(meta['disk']['free'])} / {human(meta['disk']['total'])}.", ""]
@@ -244,14 +331,21 @@ def render(rows, meta, top):
         out.append(f"| {LABEL[c]} | " + " | ".join(cells) + " |")
     if fs and rp:
         out.append("\nHai cột chồng nhau (mục của report nằm trong các thư mục của hệ thống file) — đừng cộng hai cột.")
+    out += ["", reclaim_line(rows, meta)]
     out.append("\nNÊN XOÁ: tự tạo lại, xoá chỉ tốn thời gian dựng lại. CÂN NHẮC: xoá được nhưng có hệ quả (cột *xoá thì sao*) — người dùng quyết. GIỮ: hệ thống, dữ liệu, bí mật, thứ đang dùng.")
     for c in (XOA, CAN, GIU):
-        rs = sorted((r for r in rows if r["cls"] == c), key=lambda r: -r["size"])[:top]
-        if not rs:
+        all_ = sorted((r for r in rows if r["cls"] == c), key=lambda r: -r["size"])
+        if not all_:
             continue
-        out += ["", f"## {LABEL[c]} — {top} mục lớn nhất", "", "| Dung lượng | Đường dẫn | Mục đích | Xoá thì sao | Nguồn |", "|---|---|---|---|---|"]
+        rs = group_rows(all_, top)
+        out += ["", f"## {LABEL[c]} — {human(sum(r['size'] for r in all_))} · {len(all_)} mục (lớn nhất, mục nhỏ cùng loại đã gộp)", "",
+                "| Dung lượng | Đường dẫn | Mục đích | Xoá thì sao | Nguồn |", "|---|---|---|---|---|"]
         for r in rs:
             out.append(f"| {human(r['size'])} | `{r['path'].replace(HOME, '~')}` | {r['why']} | {r['effect']} | {r['source']}{' ' + r['id'] if r.get('id') else ''} |")
+    ea = eaters(rows, meta)
+    if ea:
+        out += ["", "## Ổ đang bị chiếm bởi (ngoài NÊN XOÁ)", "", "| Dung lượng | Mục | Ghi chú |", "|---|---|---|"]
+        out += [f"| {human(n)} | {label} | {note} |" for label, n, note in ea]
     h = meta.get("history")
     if h:
         out += ["", "## Lịch sử dọn (log)", "", f"{h['entries']} dòng trong {h['files']} file log · trạng thái {h['by_status']} · đã chuyển Thùng rác {human(h['freed'])}"]
@@ -280,6 +374,10 @@ def main(argv=None):
         path = a.report if a.report != "latest" else max(glob.glob(os.path.join(DATA, "reports", "report-[0-9]*.json")), key=os.path.getmtime)
         rr, rep = classify_report(path, keep)
         rows += rr; sources.append(os.path.basename(path))
+        feats = rep.get("features") or {}
+        meta["junk_kinds"] = ((feats.get("junk") or {}).get("summary") or {}).get("kinds") or {}
+        meta["space_top"] = [dict(path=t["path"], size=t["size"]) for t in (((feats.get("space") or {}).get("summary") or {}).get("top") or [])
+                             if t.get("kind") == "dir"]
     if a.fs:
         t0 = time.time()
         roots = a.root or ["/"]
@@ -300,10 +398,11 @@ def main(argv=None):
         json.dump(dict(meta=meta, rows=rows), open(stem + ".json", "w", encoding="utf-8"), ensure_ascii=False)
         meta["written"] = stem
     if a.summary:
-        xs = sorted((r for r in rows if r["cls"] == XOA), key=lambda r: -r["size"])[:5]
-        print("\n".join(l for l in md.split("\n")[:9]))
-        for r in xs:
-            print(f"  NÊN XOÁ {human(r['size']):>9}  {r['path'].replace(HOME, '~')} — {r['why']}")
+        head = md.split("\nNÊN XOÁ: tự tạo lại")[0]
+        print(head.rstrip())
+        for c, n in ((XOA, 5), (CAN, 3)):
+            for r in group_rows(sorted((r for r in rows if r["cls"] == c), key=lambda r: -r["size"]), n)[:n]:
+                print(f"  {LABEL[c]} {human(r['size']):>9}  {r['path'].replace(HOME, '~')} — {r['why']}")
         if meta.get("written"):
             print(f"  đủ: {meta['written']}.md")
     else:

@@ -40,6 +40,52 @@ class Rules(unittest.TestCase):
         self.assertIn("VĨNH VIỄN", r[2])
 
 
+class Summary(unittest.TestCase):
+    META = dict(generated="t", sources=["r.json"], disk=dict(total=100 * 2 ** 30, free=5 * 2 ** 30))
+
+    def row(self, path, size_mb, cls, kind="user-cache", **kw):
+        d = dict(path=path, size=size_mb * 2 ** 20, files=None, cls=cls, why="w", effect="e", source="report", id=path[-4:],
+                 category=kw.pop("category", "caches"), kind=kind)
+        d.update(kw)
+        return d
+
+    def test_safe_items_get_specific_reasons(self):
+        why, eff = cl.safe_text(dict(path=cl.HOME + "/Library/Caches/Microsoft Edge", kind="user-cache"))
+        self.assertEqual(why, "cache trình duyệt")
+        self.assertIn("đăng nhập", eff)
+        self.assertIn("macOS", cl.safe_text(dict(path=cl.HOME + "/Library/Caches/com.apple.x", kind="user-cache"))[0])
+        self.assertNotIn("xếp an toàn", cl.safe_text(dict(path="/x", kind="weird"))[0])
+
+    def test_reclaim_line_totals_and_warns_when_small(self):
+        rows = [self.row("/a/aaaa", 2048, cl.XOA), self.row("/a/bbbb", 512, cl.CAN), self.row("/a/cccc", 9000, cl.GIU)]
+        line = cl.reclaim_line(rows, self.META)
+        self.assertIn("2.0 GB an toàn", line)
+        self.assertIn("512.0 MB", line)
+        self.assertIn("~7.0 GB", line)
+        self.assertIn("Ổ đang 95% đầy", line)  # free 5% < 10% and safe 2% < 5%
+
+    def test_reclaim_ignores_fs_rows_when_report_present(self):
+        rows = [self.row("/a/aaaa", 100, cl.XOA), self.row("/a", 5000, cl.XOA, source="fs")]
+        self.assertIn("100.0 MB an toàn", cl.reclaim_line(rows, self.META))
+
+    def test_small_rows_group_by_reason(self):
+        rows = [self.row(f"/c/app{i}", 1, cl.CAN) for i in range(6)] + [self.row("/c/big", 50, cl.CAN)]
+        out = cl.group_rows(rows, 5)
+        self.assertEqual(len(out), 2)
+        g = [r for r in out if r.get("grouped")][0]
+        self.assertEqual(g["grouped"], 6)
+        self.assertEqual(g["size"], 6 * 2 ** 20)
+
+    def test_render_has_eaters_and_reclaim(self):
+        rows = [self.row("/a/aaaa", 1024, cl.XOA), self.row("/Applications/X.app", 3000, cl.GIU, category="applications", kind="app")]
+        meta = dict(self.META, junk_kinds={"ai-model": dict(size=3 * 2 ** 30, cleanable=0)}, space_top=[dict(path="/Users/q/Library", size=2 ** 31)])
+        md = cl.render(rows, meta, 5)
+        self.assertIn("Giải phóng được", md)
+        self.assertIn("Ổ đang bị chiếm bởi", md)
+        self.assertIn("junk:ai-model", md)
+        self.assertIn("Ứng dụng", md)
+
+
 class Scan(unittest.TestCase):
     def test_boundary_scan_classifies_tree(self):
         root = tempfile.mkdtemp()
