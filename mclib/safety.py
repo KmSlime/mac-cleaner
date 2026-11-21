@@ -80,11 +80,12 @@ def run(cmd, timeout=60):
 
 
 def du(paths, log=None):
-    """Kích thước (byte) của nhiều path bằng một vài lệnh du (nhanh hơn walk Python)."""
+    """Kích thước (byte) của nhiều path bằng một vài lệnh du (nhanh hơn walk Python). `-x`: không đi sang volume khác
+    (ổ rời, ổ mạng gắn bên trong path)."""
     out = {}
     paths = [p for p in dict.fromkeys(paths) if os.path.lexists(p)]
     for i in range(0, len(paths), 200):
-        for line in run(["du", "-sk", *paths[i:i + 200]], timeout=900).splitlines():
+        for line in run(["du", "-skx", *paths[i:i + 200]], timeout=900).splitlines():
             k, _, p = line.partition("\t")
             if k.isdigit():
                 out[p] = int(k) * 1024

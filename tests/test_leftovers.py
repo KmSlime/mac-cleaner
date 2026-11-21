@@ -156,6 +156,29 @@ class TrashRenamed(unittest.TestCase):
             self.assertEqual(S.select(items), [])
 
 
+class StaysOnTheVolume(unittest.TestCase):
+    def test_walk_does_not_enter_another_volume(self):
+        with fake_home() as h:
+            write(os.path.join(h, "Documents", "proj", ".git", "HEAD"))
+            write(os.path.join(h, "Documents", "proj", "node_modules", "a"))
+            ext = os.path.join(h, "Documents", "external")          # stands for a mount point of an external disk
+            write(os.path.join(ext, "repo", ".git", "HEAD"))
+            write(os.path.join(ext, "repo", "node_modules", "a"))
+            write(os.path.join(ext, "setup.dmg"))
+            real = mc.device_of
+            with mock.patch.object(mc, "device_of", side_effect=lambda p: 99 if p == ext or p.startswith(ext + "/") else real(p)):
+                repos, artifacts, installers = mc.walk_home([h])
+            self.assertEqual(repos, [os.path.join(h, "Documents", "proj")])
+            self.assertEqual(artifacts, [os.path.join(h, "Documents", "proj", "node_modules")])
+            self.assertEqual(installers, [])
+
+    def test_du_does_not_cross_mount_points(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(S, "run", side_effect=lambda cmd, timeout=60: calls.append(cmd) or f"4\t{d}\n"):
+            self.assertEqual(S.du([d]), {d: 4096})
+        self.assertEqual(calls[0][:2], ["du", "-skx"])
+
+
 class UuidContainers(unittest.TestCase):
     UUID = "11111111-2222-4333-8444-555555555555"
 

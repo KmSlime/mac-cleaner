@@ -128,6 +128,9 @@ Features in `mclib/features/` also read:
   belongs to a running app when it carries one of those, the vendor label of a bundle id (`com.google.Chrome` →
   `Google`) or the first word of an app name. `scan` lists such caches as `info` (`running: true`); `clean` checks again.
 - The Trash: `report["trash"] = {size, measured}`; `clean --yes --json` adds `trash` (bytes waiting there).
+- One volume: a scan stays on the Mac's own data volume. The home walk skips a folder that is the mount point of
+  another volume (external disk, network share, disk image), the backup search runs `find -x`, sizes come from
+  `du -x`, and `classify --fs` skips `/Volumes`.
 
 Comparison with CleanMyMac: [CLEANMYMAC-PARITY.md](CLEANMYMAC-PARITY.md).
 
