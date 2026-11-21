@@ -435,6 +435,8 @@ const KIND = {
   'device-support': 'iOS DeviceSupport', 'xcode-archive': 'Xcode Archive', 'simulator-unavailable': 'Simulator hỏng',
   'dev-cache': 'Cache công cụ dev', 'build-artifact': 'Build artifact', installer: 'File cài đặt', 'backup-old': 'Backup cũ',
   'backup-latest': 'Backup mới nhất', 'app-leftover': 'Sót lại của app đã gỡ', 'agent-leftover': 'LaunchAgent mồ côi', trash: 'Thùng rác',
+  'trash-renamed': 'Bị Thùng rác đổi tên, đã đưa trở lại', 'os-installer': 'Bộ cài / cập nhật macOS còn lại',
+  'system-leftover': 'Sót lại cấp hệ thống', 'os-assets': 'Asset macOS tự tải',
 };
 const kindLabel = k => KIND[k] || k;
 const PAGE = 300;
@@ -592,7 +594,7 @@ function renderHero() {
       <div class="big">${fSize(safe + review)}<small>${fSize(safe)} an toàn · ${fSize(review)} cân nhắc</small></div></div>
     <div class="side">${n ? `<button class="btn primary" data-prop>Xem đề xuất xoá<span class="badge">${p.safe.length}</span></button>`
         : '<span class="done">✓ Không còn mục nào để đề xuất</span>'}
-      <div class="sub">Đĩa trống <b class="num">${fSize(d.free)}</b> / ${fSize(d.total)} · đã dùng ${(d.used / Math.max(d.total, 1) * 100).toFixed(0)}%</div></div>
+      <div class="sub">Đĩa trống <b class="num">${fSize(d.free)}</b> / ${fSize(d.total)} · đã dùng ${(d.used / Math.max(d.total, 1) * 100).toFixed(0)}%${S.data.trash?.size ? ` · Thùng rác đang giữ <b class="num">${fSize(S.data.trash.size)}</b> (đổ mới trống thêm)` : ''}</div></div>
     <div class="disk"><div class="meter" style="background:var(--track)"><i style="width:${pct(d.used - safe - review)};background:var(--faint)"></i><i style="width:${pct(safe)};background:var(--green)"></i><i style="width:${pct(review)};background:var(--amber)"></i></div>
       <div class="legend"><span><i style="background:var(--faint)"></i>đã dùng (khác)</span><span><i style="background:var(--green)"></i>dọn an toàn</span><span><i style="background:var(--amber)"></i>cân nhắc</span><span><i style="background:var(--track);box-shadow:inset 0 0 0 1px var(--line2)"></i>trống</span></div></div>`;
 }
@@ -1161,7 +1163,7 @@ function renderProp(first = false) {
     const r = PR.res, ok = r.results.filter(x => x.status === 'ok');
     h = head(`${perm ? 'Đã xoá vĩnh viễn' : 'Đã chuyển vào Thùng rác'} ${ok.length}/${r.results.length} mục · ${fSize(r.freed)}`,
       perm ? `Đĩa trống ${fSize(r.freeBefore)} → ${fSize(r.freeAfter)}${r.log ? ' · log ' + esc(r.log) : ''}`
-        : `Khôi phục được từ Thùng rác. Đổ Thùng rác để lấy lại dung lượng thật${r.log ? ' · log ' + esc(r.log) : ''}`)
+        : `Khôi phục được từ Thùng rác. ${r.trash ? 'Thùng rác đang giữ ' + fSize(r.trash) + ' — đổ' : 'Đổ'} Thùng rác để lấy lại dung lượng thật${r.log ? ' · log ' + esc(r.log) : ''}`)
       + `<div class="pb">${r.results.map(x => `<div class="res"><span class="st ${x.status}">${x.status}</span>${esc(x.path)}${x.reason ? ` <span style="color:var(--faint)">— ${esc(x.reason)}</span>` : ''}</div>`).join('') || '<div class="empty">Không có mục nào</div>'}</div>
       <div class="pf"><div class="row"><span class="fill"></span><button class="btn primary" id="pclose2">Đóng</button></div></div>`;
   } else {
@@ -1214,7 +1216,7 @@ window.cleaned = res => {
   if (inProp) { PR.phase = 'done'; PR.res = res; draw(); return renderProp(); }
   drawer(`<div style="display:flex;align-items:center"><span style="flex:1;color:var(--dim)">${dry ? 'Xem trước' : 'Kết quả xoá'}</span><button class="icon-btn" id="close" aria-label="Đóng">✕</button></div>
     <h2>${dry ? 'Sẽ xoá' : 'Đã xoá'} ${ok.length}/${res.results.length} mục · ${fSize(res.freed)}</h2>
-    <div class="sub">${dry ? 'Chưa thay đổi gì.' : `Đĩa trống ${fSize(res.freeBefore)} → ${fSize(res.freeAfter)}${res.log ? ' · log ' + esc(res.log) : ''}. Đổ Thùng rác để lấy lại dung lượng thật.`}</div>
+    <div class="sub">${dry ? 'Chưa thay đổi gì.' : `Đĩa trống ${fSize(res.freeBefore)} → ${fSize(res.freeAfter)}${res.log ? ' · log ' + esc(res.log) : ''}. ${res.trash ? 'Thùng rác đang giữ ' + fSize(res.trash) + ' — đổ' : 'Đổ'} Thùng rác để lấy lại dung lượng thật.`}</div>
     ${dry && ok.length ? '<div class="actions" style="margin:18px 0"><button class="btn danger" id="goconfirm">Tiếp tục xoá</button></div>' : ''}
     <div class="sec">Chi tiết</div>${res.results.map(r => `<div class="res"><span class="st ${r.status}">${r.status}</span>${esc(r.path)}${r.reason ? ` <span style="color:var(--faint)">— ${esc(r.reason)}</span>` : ''}</div>`).join('')}`);
   draw();

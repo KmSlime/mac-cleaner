@@ -14,6 +14,11 @@ kind (mức an toàn / cách xoá):
   broken-pref     ~/Library/Preferences/*.plist không đọc được (plistlib và plutil đều lỗi) — review/trash
   ios-backup      bản sao lưu thiết bị iOS/iPadOS — inventory/list-only (có thể là bản duy nhất; cần Full Disk Access)
   firmware        file .ipsw đã tải — review/trash (tải lại được từ Apple)
+  os-installer    bộ cài / gói cập nhật macOS còn nằm lại (`macOS Install Data` ở gốc ổ dữ liệu, `Install macOS *.app`)
+                  — inventory/list-only: root sở hữu, xoá cần quyền admin → người dùng tự quyết
+  system-leftover dữ liệu cấp hệ thống của hãng không còn app nào trên máy (/Library/Application Support/<hãng>, thư mục ẩn
+                  lạ ở gốc ổ dữ liệu) — inventory/list-only: cần quyền admin, người dùng tự quyết
+  os-assets       asset macOS tự tải và quản lý (/System/Library/AssetsV2, từ 1 GB) — inventory/list-only: chỉ để biết
 Snapshot Time Machine local: chỉ liệt kê trong summary["snapshots"] kèm lệnh gợi ý (không hoàn tác được, không tự chạy).
 App/trình duyệt đang chạy → mục của nó hạ xuống inventory/list-only; `clean` kiểm lại lúc dọn (khoá owners, lock_dir).
 """
@@ -24,6 +29,8 @@ import json
 import os
 import plistlib
 import re
+import subprocess
+import time
 
 from mclib import featclean, registry, safety as S
 
@@ -61,6 +68,21 @@ AI_MODELS = (
     (".lmstudio/models", "LM Studio"),
 )
 SNAPSHOT_RE = re.compile(r"(\d{4}-\d{2}-\d{2}-\d{6})")
+# Cấp hệ thống (ngoài home) — chỉ liệt kê. gather(system=None) bỏ qua cả nhóm (test dựng cây giả rồi truyền vào).
+SYSTEM = dict(volumes=(S.DATA_VOL, "/"), apps="/Applications", support="/Library/Application Support",
+              launchd=("/Library/LaunchDaemons", "/Library/LaunchAgents"), assets="/System/Library/AssetsV2")
+INSTALL_DATA = "macOS Install Data"
+STALE_DAYS = 30               # gói cài/cập nhật macOS chờ quá mức này là đồ bỏ quên; dữ liệu hãng không ghi quá mức này
+ROOT_DOT_DAYS = 180           # thư mục ẩn lạ ở gốc ổ: chỉ báo khi đã rất lâu không đụng
+MIN_REPORT = 50 * 2 ** 20     # phần sót nhỏ hơn mức này không đáng báo
+MIN_ASSET = 2 ** 30
+# Thư mục ẩn ở gốc ổ dữ liệu do macOS tự tạo
+ROOT_DOT_KNOWN = {".documentrevisions-v100", ".previoussysteminformation", ".spotlight-v100", ".temporaryitems", ".fseventsd",
+                  ".trashes", ".vol", ".file", ".nofollow", ".resolve", ".mobilebackups", ".pkinstallsandboxmanager",
+                  ".pkinstallsandboxmanager-systemsoftware", ".hfs+ private directory data", ".installer-compatibility"}
+# Trong /Library/Application Support nhưng là của macOS (không mang tiền tố com.apple.)
+APPLE_SUPPORT = {"apple", "app store", "applepushservice", "btserver", "crashreporter", "proapps", "script editor",
+                 "ilifemediabrowser", "livefsd", "iphoto", "imovie", "garageband", "logic", "final cut pro"}
 
 
 def _children(d, denied=None):
@@ -263,6 +285,123 @@ def firmware(home):
     return out
 
 
+def _newest(d):
+    """mtime mới nhất của thư mục và các mục con trực tiếp (0 nếu không đọc được)."""
+    out = 0
+    for p in [d] + _children(d):
+        try:
+            out = max(out, os.lstat(p).st_mtime)
+        except OSError:
+            pass
+    return out
+
+
+def _unreadable(d):
+    """Thư mục (hoặc thư mục con trực tiếp) không đọc được bằng quyền hiện tại → số đo dung lượng thiếu."""
+    return any(os.path.isdir(p) and not os.path.islink(p) and not os.access(p, os.R_OK | os.X_OK) for p in [d] + _children(d))
+
+
+def _days(ts, now):
+    return int((now - ts) / 86400) if ts else None
+
+
+def os_installers(system, now):
+    """Bộ cài / gói cập nhật macOS còn nằm lại. `macOS Install Data` do trình cập nhật (root) tạo ở gốc ổ dữ liệu và
+    đáng lẽ tự xoá sau khi cài; còn đó sau STALE_DAYS ngày là bị bỏ quên. Không sudo → chỉ liệt kê."""
+    out, seen = [], set()
+    for vol in system["volumes"]:
+        p = os.path.join(vol, INSTALL_DATA)
+        real = os.path.realpath(p)
+        if not _isdir(p) or real in seen:
+            continue
+        seen.add(real)
+        days = _days(_newest(p), now)
+        stale = days is not None and days >= STALE_DAYS
+        when = f"{days} ngày không đổi" if days is not None else "không đọc được ngày"
+        out.append((p, "os-installer", "inventory",
+                    (f"gói cài/cập nhật macOS bị bỏ lại ({when}) — không bản cập nhật nào còn chờ lâu như vậy"
+                     if stale else f"gói cập nhật macOS vừa tải ({when}) — có thể đang chờ cài, để yên")
+                    + " · root sở hữu: xoá cần quyền admin, bạn tự quyết (mac-cleaner không dùng sudo)",
+                    dict(owner="macOS", label=f"{INSTALL_DATA} · {when}", stale=stale, needs_admin=True, min_size=MIN_REPORT,
+                         unreadable=_unreadable(p))))
+    for app in sorted(glob.glob(os.path.join(system["apps"], "Install macOS*.app"))):
+        if _isdir(app):
+            ver = str(S.plist(os.path.join(app, "Contents", "Info.plist")).get("CFBundleShortVersionString", ""))
+            out.append((app, "os-installer", "inventory",
+                        "bộ cài macOS đầy đủ — chỉ cần khi cài lại/tạo USB cài; xoá bằng Finder (tải lại được từ Apple)",
+                        dict(owner="macOS", label=" ".join(x for x in (os.path.basename(app)[:-4], ver) if x), stale=False,
+                             needs_admin=False, min_size=MIN_REPORT)))
+    return out
+
+
+def _key(name):
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def spotlight_vendor_apps(key):
+    """Đường dẫn các app Spotlight thấy có bundle id chứa tên hãng; None khi không hỏi được (→ giữ, không đoán)."""
+    try:
+        r = subprocess.run(["/usr/bin/mdfind", f"kMDItemContentType == 'com.apple.application-bundle' && "
+                            f"kMDItemCFBundleIdentifier == '*{key}*'c"], capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return None if r.returncode else [p for p in r.stdout.splitlines() if p.strip()]
+
+
+def system_leftovers(system, base_items, now, find_apps=spotlight_vendor_apps):
+    """Dữ liệu cấp hệ thống của hãng không còn app nào trên máy. Lần lượt từ rẻ tới đắt; nghi ngờ thì KHÔNG báo:
+    của Apple / phần mềm bảo mật → bỏ; còn app, plugin hay launchd job mang tên hãng → bỏ; còn được ghi trong
+    STALE_DAYS ngày → bỏ; Spotlight thấy app của hãng ở chỗ khác (hoặc không hỏi được) → bỏ. Còn lại: chỉ liệt kê.
+    Trình gỡ/helper nằm ngay trong chính thư mục đó không tính là "còn app"."""
+    installed = [(i.get("path", ""), _key(f"{i.get('bundle_id', '')} {i.get('name', '')} {i.get('path', '')}"))
+                 for i in base_items if i.get("category") in ("applications", "plugins")]
+    jobs = " ".join(_key(os.path.basename(p)) for d in system["launchd"] for p in _children(d))
+    out = []
+    for d in _children(system["support"]):
+        n = os.path.basename(d)
+        key = _key(n)
+        if (not _isdir(d) or len(key) < 3 or n.lower().startswith(("com.apple.", "apple")) or n.lower() in APPLE_SUPPORT
+                or S.security_agent("/com." + key) or any(w in key for w in S.SENSITIVE_WORDS)):
+            continue
+        days = _days(_newest(d), now)
+        if (any(key in blob for path, blob in installed if not path.startswith(d + "/"))  # plugin nằm ngay trong d không tính
+                or key in jobs or days is None or days < STALE_DAYS):
+            continue
+        apps = find_apps(key)
+        if apps is None or any(not a.startswith(d + "/") for a in apps):
+            continue
+        out.append((d, "system-leftover", "inventory",
+                    f"không còn app, plugin hay dịch vụ nào của “{n}” trên máy (đã hỏi Spotlight), {days} ngày không ghi"
+                    " · nằm ngoài home: xoá cần quyền admin, bạn tự quyết",
+                    dict(owner=n, label=f"{n} · Application Support (hệ thống)", needs_admin=True, min_size=MIN_REPORT,
+                         unreadable=_unreadable(d))))
+    for vol in system["volumes"][:1]:
+        for d in _children(vol):
+            n = os.path.basename(d)
+            days = _days(_newest(d), now)
+            if (n.startswith(".") and _isdir(d) and n.lower() not in ROOT_DOT_KNOWN and days is not None
+                    and days >= ROOT_DOT_DAYS):
+                out.append((d, "system-leftover", "inventory",
+                            f"thư mục ẩn ở gốc ổ dữ liệu, không phải của macOS, {days} ngày không ghi — thường là đồ tạm của "
+                            "trình cài đã gỡ · xoá cần quyền admin, bạn tự quyết",
+                            dict(owner=n.lstrip("."), label=f"{n} · gốc ổ dữ liệu", needs_admin=True, min_size=MIN_REPORT,
+                                 unreadable=_unreadable(d))))
+    return out
+
+
+def os_assets(system):
+    """Asset macOS tự tải (model AI trên máy, giọng đọc, từ điển…): chiếm chỗ đáng kể nhưng do macOS quản lý — chỉ để biết."""
+    out = []
+    for d in _children(system["assets"]):
+        if _isdir(d):
+            n = os.path.basename(d)
+            out.append((d, "os-assets", "inventory",
+                        "asset macOS tự tải và quản lý (model AI trên máy, giọng đọc, từ điển…) — không dọn: macOS tự thu hồi "
+                        "khi thiếu chỗ; muốn bỏ thì tắt tính năng tương ứng trong System Settings",
+                        dict(owner="macOS", label=n.replace("com_apple_MobileAsset_", ""), min_size=MIN_ASSET)))
+    return out
+
+
 def snapshots(run=S.run):
     snaps = parse_snapshots(run(["/usr/bin/tmutil", "listlocalsnapshots", "/"], timeout=20))
     for s in snaps:
@@ -290,12 +429,16 @@ class _Covered:
         return k < len(self.paths) and self.paths[k].startswith(p + "/")
 
 
-def gather(home, base_items=(), running=None, run=S.run, du=S.du):
-    """Dò mọi nhóm → (summary, items). running: tập tên app đang chạy (None = tự hỏi ps)."""
+def gather(home, base_items=(), running=None, run=S.run, du=S.du, system=None, now=None, find_apps=spotlight_vendor_apps):
+    """Dò mọi nhóm → (summary, items). running: tập tên app đang chạy (None = tự hỏi ps).
+    system: gốc các nhóm cấp hệ thống (SYSTEM khi chạy thật; None = bỏ qua, test truyền cây giả)."""
     denied = []
     found, browsers = browser_caches(home, denied)
     found += app_caches(home) + dev_caches(home) + container_logs(home) + broken_prefs(home, run)
     found += ios_backups(home, denied) + firmware(home)
+    if system:
+        now = now or time.time()
+        found += os_installers(system, now) + system_leftovers(system, base_items, now, find_apps) + os_assets(system)
     covered = _Covered(base_items)
     kept = [f for f in found if not covered(f[0])]
     names = featclean.running_names(run) if running is None else running
@@ -309,6 +452,12 @@ def gather(home, base_items=(), running=None, run=S.run, du=S.du):
         label = extra.pop("label", "")
         if sizes.get(p) == 0 and kind in ("browser-cache", "app-cache", "dev-cache", "container-log"):
             continue  # thư mục rỗng thực tế: không đáng liệt kê
+        unreadable = extra.pop("unreadable", False) or (sizes.get(p) is None and extra.get("needs_admin", False))
+        if (sizes.get(p) or 0) < extra.pop("min_size", 0) and not unreadable:
+            continue  # phần sót quá nhỏ không đáng báo
+        if unreadable:  # root sở hữu, không đọc hết được: số đo thiếu — vẫn báo, nói rõ
+            extra["unreadable"] = True
+            reason = "không đo hết được bằng quyền hiện tại (dung lượng thật có thể lớn hơn nhiều) · " + reason
         items.append(registry.entry(NAME, p, name=label, size=sizes.get(p), safety=safety, delete_mode=mode,
                                     reason=reason, kind=kind, **extra))
     by_kind = {}
@@ -329,12 +478,12 @@ def gather(home, base_items=(), running=None, run=S.run, du=S.du):
 
 
 def collect(ctx):
-    summary, items = gather(ctx.home, ctx.items, run=ctx.run, du=ctx.du)
+    summary, items = gather(ctx.home, ctx.items, run=ctx.run, du=ctx.du, system=SYSTEM)
     return {"summary": summary, "items": items}
 
 
 def cli(args):
-    summary, items = gather(S.HOME)
+    summary, items = gather(S.HOME, system=SYSTEM)
     if args.json:
         print(json.dumps({"summary": summary, "items": items}, ensure_ascii=False))
         return 0

@@ -190,11 +190,15 @@ Mỗi mục được xếp vào một trong bốn mức:
 | Mức | Nghĩa | Ví dụ |
 |---|---|---|
 | **An toàn** (`safe`) | dọn không mất dữ liệu, app tự tạo lại | cache và log của user, cache trong Containers, simulator hỏng, backup cũ (đã có bản mới hơn), bản extension editor đã lỗi thời |
-| **Cân nhắc** (`review`) | dọn được nhưng nên xem trước | **Xcode DerivedData**, build artifact (`node_modules`, `Pods`, `.venv`…), cache tải lại rất lâu, installer `.dmg`/`.pkg`/`.xip`, iOS DeviceSupport, Archives, phần sót lại của app đã gỡ |
-| **Kiểm kê** (`info`) | chỉ liệt kê; xoá được khi bạn chọn đích danh | ứng dụng, plugin, extension đang dùng, git repo, backup mới nhất |
+| **Cân nhắc** (`review`) | dọn được nhưng nên xem trước | **Xcode DerivedData**, build artifact (`node_modules`, `Pods`, `.venv`…), cache tải lại rất lâu, installer `.dmg`/`.pkg`/`.xip`, iOS DeviceSupport, Archives, phần sót lại của app đã gỡ (kể cả container mang tên UUID), thư mục bị Thùng rác đổi tên rồi được đưa trở lại (`Pods 11-16-47-630`) |
+| **Kiểm kê** (`info`) | chỉ liệt kê; xoá được khi bạn chọn đích danh | ứng dụng, plugin, extension đang dùng, git repo, backup mới nhất, cache của app **đang chạy** (đóng app rồi quét lại) |
 | **Bảo vệ** (`protected`) | không bao giờ dọn tự động; chỉ xoá khi bạn chọn đích danh | Keychains, `~/.ssh`, `~/.gnupg`, dữ liệu ứng dụng trong `~/Library`, thư mục ẩn ở home chứa dữ liệu/cấu hình của các tool |
 
 **Xcode DerivedData** luôn được đề xuất kèm dung lượng nhưng **không bao giờ dọn tự động** (lần build sau sẽ lâu hơn): nó nằm ở nhóm *Cân nhắc*, bạn tự tick mới dọn.
+
+**Chỉ báo, không dọn** (từ 1.13.0, khu *Rác hệ thống* và bảng *Cần bạn quyết* của phân loại): gói cài/cập nhật macOS bị bỏ lại ở gốc ổ (`macOS Install Data`, `Install macOS *.app`), dữ liệu cấp hệ thống của hãng không còn app nào trên máy (`/Library/Application Support/<hãng>`, thư mục ẩn lạ ở gốc ổ) và asset macOS tự tải (`/System/Library/AssetsV2`). Những thứ này cần quyền admin hoặc do macOS quản lý — Mac Cleaner không dùng `sudo`, nên chỉ nêu đường dẫn, dung lượng và lý do để bạn tự quyết.
+
+**Thùng rác**: dọn = chuyển vào Thùng rác, nên ổ chưa trống thêm cho tới khi bạn đổ. Report, bảng phân loại, trang Tổng quan và kết quả `clean --yes` đều ghi Thùng rác đang giữ bao nhiêu.
 
 ### Không bao giờ xoá được
 

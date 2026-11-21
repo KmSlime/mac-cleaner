@@ -14,7 +14,7 @@ Mọi lệnh dưới đây **mặc định chỉ đọc / xem trước**; chỉ 
 |---|---|---|
 | Kiểm kê toàn máy + mọi tính năng, dashboard | `mac-cleaner scan` | — (ghi report `.json/.md/.html`) |
 | Xoá **đích danh** mục trong report (cả mục tính năng) | `clean --ids <id,…>` · `clean --category <nhóm>` hoặc `<tính năng>:<kind>` | `--yes` → **Thùng rác**, log `logs/clean-*.jsonl`; mục `permanent` cần thêm `--permanent` |
-| Rác hệ thống mở rộng (cache trình duyệt/app, log container, plist hỏng, firmware…) | `junk` | qua `clean --category junk:<kind> --yes` |
+| Rác hệ thống mở rộng (cache trình duyệt/app, log container, plist hỏng, firmware…) + phần **chỉ báo**: gói cài/cập nhật macOS bị bỏ lại, phần sót cấp hệ thống của app đã gỡ, asset macOS tự tải | `junk` | qua `clean --category junk:<kind> --yes`; mục chỉ báo (`os-installer`, `system-leftover`, `os-assets`) cần quyền admin → nêu cho người dùng tự quyết, **không** tự `sudo` |
 | Gỡ app kèm file liên quan | `uninstall <tên\|bundle id\|.app>` · `uninstall --list` (app lâu không mở) | `--yes` → app rồi file liên quan vào Thùng rác |
 | Bản cập nhật app (Sparkle, Homebrew cask) + macOS | `updates [--offline]` | chỉ liệt kê, không cài |
 | Bản đồ dung lượng / file lớn và cũ | `analyze [path] [--depth N]` · `large [path…] [--min 500M] [--older 180d]` | chỉ đọc — chưa nối vào `clean` (không có id trong report): người dùng tự chuyển vào Thùng rác |
@@ -43,7 +43,7 @@ Mole (`mo`) không còn là dependency. Nếu người dùng tự cài và muố
    - `mac-cleaner clean --ids <id,…> [--include-review] --yes`;
    - mục kiểm kê/bảo vệ (app, repo, plugin, backup mới nhất, dữ liệu trong `Application Support`, LaunchAgent…) chỉ khi người dùng **chỉ đích danh**: thêm `--force`;
    - gỡ app: `uninstall <app> --yes`; tắt mục khởi động: `startup disable <label> --yes`; reset quyền: `privacy reset <dịch vụ> <bundle id> --yes`; bảo trì: `maintain run <tác vụ> --yes` — mỗi lệnh một mục người dùng đã chỉ đích danh.
-5. Đo lại `df`, báo số thật so với ước lượng, liệt kê mục `skip`/`error` và lý do.
+5. Đo lại `df`, báo số thật so với ước lượng, liệt kê mục `skip`/`error` và lý do. Dọn = chuyển vào Thùng rác: ổ **chưa trống thêm** cho tới khi đổ — báo luôn dòng "Thùng rác đang giữ …" mà `clean --yes` / report in ra, và để người dùng quyết việc đổ.
 
 Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`uninstall`/`startup disable|enable`/`privacy reset`/`maintain run`/`self-update apply`/`self-update auto on`/`self-update schedule edit|remove`/`admin grant|revoke` kèm `--yes`, `mo` không `--dry-run`, đụng Thùng rác) — đó là chốt, không phải lỗi.
 
@@ -53,7 +53,9 @@ Plugin có hook bắt hỏi duyệt trước mọi lệnh làm thật (`clean`/`
 - **Dùng chung**: Office group container, autoupdate/oneauth của Microsoft, Sparkle, Keystone — còn app nào của hãng đó thì giữ.
 - **Cache đang là dữ liệu sống** (xoá là hỏng thứ khác, không chỉ phải tải lại): `~/Library/Caches/pypoetry` (virtualenv của project Poetry), `org.R-project.R` (renv), `com.apple.FontRegistry`, `com.apple.Spotlight`.
 - **Cache tải lại rất lâu**: `ms-playwright*`, `JetBrains*` → cân nhắc, hỏi trước.
-- **Cache của app đang chạy**: đóng app rồi mới dọn (mac-cleaner tự bỏ qua và báo `skip`).
+- **Cache của app đang chạy**: đóng app rồi mới dọn (mac-cleaner tự bỏ qua và báo `skip`; từ 1.13.0 scan xếp sẵn mức kiểm kê kèm "app đang chạy", kể cả thư mục mang tên app/hãng như `Microsoft Edge`, `Google`).
+- **Thư mục `<tên> HH-MM-SS-mmm`** (`trash-renamed`): bản bị Thùng rác đổi tên vì trùng tên rồi được "Đưa trở lại" — nằm cạnh bản gốc, không gì dùng; mức cân nhắc, nêu cho người dùng chọn.
+- **Bảng "CẦN BẠN QUYẾT"** của classify (gói cài macOS cũ, phần sót cấp hệ thống, asset macOS): chỉ báo đường dẫn + dung lượng + lý do; cần quyền admin nên người dùng tự xoá, agent không `sudo`.
 - **Build artifact vừa dùng trong 7 ngày**: đang làm dự án đó → không đề xuất.
 - **Xcode DerivedData**: luôn nằm ở mức `review` — **đề xuất** cho người dùng (kèm dung lượng, "lần build sau lâu hơn"), **không bao giờ dọn tự động** (không nằm trong `clean` mặc định, lịch dọn tự động cũng bỏ qua). Chỉ dọn khi người dùng chọn đích danh.
 - **Model AI đã tải** (ollama, LM Studio, `~/.cache/huggingface`…), **bản sao lưu iOS**, **snapshot Time Machine**: chỉ liệt kê — tải lại/khôi phục rất lâu, người dùng tự quyết.
