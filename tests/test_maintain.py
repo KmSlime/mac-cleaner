@@ -6,6 +6,7 @@ import subprocess
 import sys
 import types
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import maccleaner as mc  # noqa: E402
@@ -97,6 +98,13 @@ class Run(unittest.TestCase):
 
 
 class Cli(unittest.TestCase):
+    # The machine running the tests may hold real `admin grant`s: without this patch `maintain run purge-ram --yes`
+    # would run `sudo -n /usr/sbin/purge` for real. Tests never read sudoers nor run a privileged command.
+    def setUp(self):
+        p = mock.patch.object(M.admin, "granted", return_value=set())
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_collect_and_list_json(self):
         res = M.collect(registry.ReportContext())
         json.dumps(res)
