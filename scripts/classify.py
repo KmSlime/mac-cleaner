@@ -82,7 +82,11 @@ REPORT_CAN = {  # chức năng của "cân nhắc" theo loại mục trong repor
     "installer": "bản cài (.dmg/.pkg) — xoá được nếu đã cài xong",
     "device-support": "symbol iOS — cắm lại máy đó thì Xcode tải lại",
     "xcode-deriveddata": "build trung gian của Xcode",
+    "trash-renamed": "bản bị Thùng rác đổi tên (trùng tên) rồi được đưa trở lại chỗ cũ — không app/dự án nào dùng tên này",
 }
+# Mục cấp hệ thống của tính năng junk: mac-cleaner chỉ liệt kê (cần quyền admin / do macOS quản lý) — người dùng tự quyết.
+DECIDE_KINDS = {"os-installer": "bộ cài / gói cập nhật macOS còn nằm lại", "system-leftover": "phần sót cấp hệ thống của app đã gỡ",
+                "os-assets": "asset do macOS tự tải và quản lý"}
 # Lý do + hệ quả cụ thể cho mục "an toàn" (thay câu chung "mac-cleaner xếp an toàn"); khoá = (loại, gợi ý đường dẫn).
 BROWSER_HINTS = ("Microsoft Edge", "/Google", "Chrome", "Firefox", "BraveSoftware", "com.microsoft.edgemac", "Vivaldi", "Arc")
 SAFE_BY_KIND = {
@@ -286,11 +290,30 @@ def eaters(rows, meta):
             by[r["category"]] += r["size"]
     out = [(CAT_LABEL.get(c, c), n, "") for c, n in sorted(by.items(), key=lambda x: -x[1])[:5] if n >= 100 * 2 ** 20]
     for k, v in (meta.get("junk_kinds") or {}).items():
+        if k in DECIDE_KINDS:  # có bảng riêng "Cần bạn quyết"
+            continue
         if v.get("size", 0) >= 2 ** 30 and not v.get("cleanable"):
             out.append((f"junk:{k}", v["size"], "chỉ liệt kê — tải lại/khôi phục rất lâu, bạn tự quyết"))
     for t in (meta.get("space_top") or [])[:5]:
         out.append((t["path"].replace(HOME, "~"), t["size"], "thư mục lớn nhất trong home (số đo của `space`)"))
     return out
+
+
+def trash_line(meta):
+    """Thùng rác đang giữ bao nhiêu: dọn = chuyển vào Thùng rác, ổ chỉ trống thêm khi đổ."""
+    t = meta.get("trash") or {}
+    if t.get("measured") is False:
+        return "Thùng rác: không đo được (terminal cần Full Disk Access) — mục đã dọn vẫn chiếm ổ cho tới khi đổ Thùng rác."
+    if (t.get("size") or 0) >= 2 ** 20:  # dưới 1 MB (.DS_Store…) coi như trống
+        return f"**Thùng rác đang giữ {human(t['size'])}** — mục đã dọn nằm ở đó; ổ chỉ trống thêm khi đổ Thùng rác (xoá vĩnh viễn, bạn tự quyết)."
+    return ""
+
+
+def decide_rows(feats):
+    """Mục junk cấp hệ thống (DECIDE_KINDS), lớn trước."""
+    items = ((feats.get("junk") or {}).get("items") or []) if isinstance(feats, dict) else []
+    return sorted((dict(path=e.get("path", ""), size=e.get("size") or 0, kind=e.get("kind"), why=e.get("reason", ""))
+                   for e in items if e.get("kind") in DECIDE_KINDS), key=lambda r: -r["size"])
 
 
 def group_rows(rs, top):
@@ -332,6 +355,8 @@ def render(rows, meta, top):
     if fs and rp:
         out.append("\nHai cột chồng nhau (mục của report nằm trong các thư mục của hệ thống file) — đừng cộng hai cột.")
     out += ["", reclaim_line(rows, meta)]
+    if trash_line(meta):
+        out += ["", trash_line(meta)]
     out.append("\nNÊN XOÁ: tự tạo lại, xoá chỉ tốn thời gian dựng lại. CÂN NHẮC: xoá được nhưng có hệ quả (cột *xoá thì sao*) — người dùng quyết. GIỮ: hệ thống, dữ liệu, bí mật, thứ đang dùng.")
     for c in (XOA, CAN, GIU):
         all_ = sorted((r for r in rows if r["cls"] == c), key=lambda r: -r["size"])
@@ -342,6 +367,10 @@ def render(rows, meta, top):
                 "| Dung lượng | Đường dẫn | Mục đích | Xoá thì sao | Nguồn |", "|---|---|---|---|---|"]
         for r in rs:
             out.append(f"| {human(r['size'])} | `{r['path'].replace(HOME, '~')}` | {r['why']} | {r['effect']} | {r['source']}{' ' + r['id'] if r.get('id') else ''} |")
+    if meta.get("decide"):
+        out += ["", f"## CẦN BẠN QUYẾT — {human(sum(r['size'] for r in meta['decide']))} · {len(meta['decide'])} mục (mac-cleaner chỉ liệt kê: cần quyền admin hoặc do macOS quản lý)",
+                "", "| Dung lượng | Đường dẫn | Loại | Vì sao / xoá thế nào |", "|---|---|---|---|"]
+        out += [f"| {human(r['size'])} | `{r['path'].replace(HOME, '~')}` | {DECIDE_KINDS[r['kind']]} | {r['why']} |" for r in meta["decide"][:top]]
     ea = eaters(rows, meta)
     if ea:
         out += ["", "## Ổ đang bị chiếm bởi (ngoài NÊN XOÁ)", "", "| Dung lượng | Mục | Ghi chú |", "|---|---|---|"]
@@ -376,6 +405,9 @@ def main(argv=None):
         rows += rr; sources.append(os.path.basename(path))
         feats = rep.get("features") or {}
         meta["junk_kinds"] = ((feats.get("junk") or {}).get("summary") or {}).get("kinds") or {}
+        meta["decide"] = decide_rows(feats)
+        tr = next((i for i in rep.get("items", []) if i.get("kind") == "trash"), None)  # report cũ không có khoá "trash"
+        meta["trash"] = rep.get("trash") or (dict(size=tr.get("size") or 0, measured=None) if tr else {})
         meta["space_top"] = [dict(path=t["path"], size=t["size"]) for t in (((feats.get("space") or {}).get("summary") or {}).get("top") or [])
                              if t.get("kind") == "dir"]
     if a.fs:
@@ -400,6 +432,8 @@ def main(argv=None):
     if a.summary:
         head = md.split("\nNÊN XOÁ: tự tạo lại")[0]
         print(head.rstrip())
+        for r in (meta.get("decide") or [])[:3]:
+            print(f"  CẦN BẠN QUYẾT {human(r['size']):>9}  {r['path'].replace(HOME, '~')} — {DECIDE_KINDS[r['kind']]}")
         for c, n in ((XOA, 5), (CAN, 3)):
             for r in group_rows(sorted((r for r in rows if r["cls"] == c), key=lambda r: -r["size"]), n)[:n]:
                 print(f"  {LABEL[c]} {human(r['size']):>9}  {r['path'].replace(HOME, '~')} — {r['why']}")

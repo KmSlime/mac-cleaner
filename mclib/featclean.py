@@ -59,21 +59,8 @@ def as_item(e):
 
 # ---------- app sở hữu đang chạy ----------
 def running_names(run=S.run):
-    """Tên nhận diện (chữ thường) của app đang chạy: bundle id, tên .app, CFBundleName, CFBundleExecutable."""
-    out, seen = set(), set()
-    for line in run(["/bin/ps", "-axo", "comm="], timeout=10).splitlines():
-        m = re.match(r"(.+?\.app)/Contents/MacOS/", line.strip())
-        if not m or m.group(1) in seen:
-            continue
-        app = m.group(1)
-        seen.add(app)
-        out.add(os.path.basename(app)[:-4].lower())
-        info = S.plist(os.path.join(app, "Contents/Info.plist"))
-        for k in ("CFBundleIdentifier", "CFBundleName", "CFBundleExecutable"):
-            v = info.get(k)
-            if isinstance(v, str) and v:
-                out.add(v.lower())
-    return out
+    """Tên nhận diện (chữ thường) của app đang chạy — xem safety.running_names."""
+    return S.running_names(run)
 
 
 def lock_alive(d):

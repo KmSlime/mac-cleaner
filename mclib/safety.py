@@ -186,8 +186,29 @@ def running_bundle_ids():
     return out
 
 
+def running_names(run=run):
+    """Tên nhận diện (chữ thường) của app đang chạy: bundle id, tên .app, CFBundleName, CFBundleExecutable."""
+    out, seen = set(), set()
+    for line in run(["/bin/ps", "-axo", "comm="], timeout=10).splitlines():
+        m = re.match(r"(.+?\.app)/Contents/MacOS/", line.strip())
+        if not m or m.group(1) in seen:
+            continue
+        app = m.group(1)
+        seen.add(app)
+        out.add(os.path.basename(app)[:-4].lower())
+        info = plist(os.path.join(app, "Contents/Info.plist"))
+        for k in ("CFBundleIdentifier", "CFBundleName", "CFBundleExecutable"):
+            v = info.get(k)
+            if isinstance(v, str) and v:
+                out.add(v.lower())
+    return out
+
+
 def cache_owner_running(path, running):
-    """Cache (~/Library/Caches/<id>, Containers/<id>/…/Caches) của một app đang chạy? Xoá lúc đó dễ hỏng dữ liệu app."""
+    """Cache (~/Library/Caches/<tên>, Containers/<id>/…/Caches) của một app đang chạy? Xoá lúc đó dễ hỏng dữ liệu app.
+    running: bundle id và/hoặc tên app (running_bundle_ids() | running_names()), chữ thường. <tên> khớp khi là
+    bundle id (hoặc bundle id + hậu tố), tên app ("Microsoft Edge"), hay tên hãng của app đó — nhãn thứ hai của
+    bundle id ("com.google.Chrome" → "Google") hoặc từ đầu của tên app ("Google Chrome" → "Google")."""
     lib = os.path.join(HOME, "Library").lower() + "/"
     low = path.lower()
     if not low.startswith(lib):
@@ -196,7 +217,16 @@ def cache_owner_running(path, running):
     if parts[0] not in ("caches", "containers") or len(parts) < 2:
         return False
     name = parts[1]
-    return any(name == r or name.startswith(r + ".") for r in running)
+    for r in running:
+        if name == r or name.startswith(r + "."):
+            return True
+        labels = r.split(".")
+        if " " not in r and len(labels) >= 3:
+            if name == labels[1]:          # thư mục mang tên hãng trong bundle id
+                return True
+        elif r.startswith(name + " "):      # thư mục mang từ đầu của tên app
+            return True
+    return False
 
 
 # ---------- clean ----------
@@ -380,7 +410,7 @@ def clean(rep, chosen, yes=False, log=print, force=False, mode="trash"):
     log_path = os.path.join(DATA, "logs", "clean-" + time.strftime("%Y%m%d-%H%M%S") + ".jsonl")
     if yes:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    running = running_bundle_ids() if yes else set()
+    running = (running_bundle_ids() | running_names()) if yes else set()
     for it in chosen:
         why = validate(it, force) or (permanent_reason(it) if permanent else None)
         if not why and yes and it.get("category") == "caches" and cache_owner_running(it.get("path", ""), running):

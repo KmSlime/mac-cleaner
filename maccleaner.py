@@ -34,7 +34,7 @@ from mclib.safety import (  # noqa: E402,F401
     ALLOWED_ROOTS, CLEANABLE, DATA, DATA_VOL, DENY_EXACT, DENY_TREE_OK, DENY_TREES, DOT_CLEANABLE, HOME,
     HOME_FOLDERS, LEFTOVER_LIBRARY, LIBRARY_CLEANABLE, LIVE_DATA_CACHES, PROTECTED, SECURITY_AGENT_IDS,
     SENSITIVE_WORDS, SIP_OK, SIP_ROOTS, TRASH_BIN, action_of, cache_owner_running, clean, disk_usage, du, fmt,
-    guard_reason, hard_deny, is_protected, item, plist, run, run_action, running_bundle_ids, security_agent, select,
+    guard_reason, hard_deny, is_protected, item, plist, run, run_action, running_bundle_ids, running_names, security_agent, select,
     to_trash, validate)
 
 # Cache do macOS tự quản lý: dọn được nhưng để mức "cân nhắc".
@@ -56,7 +56,9 @@ WALK_PRUNE = {".git", "Library", "__pycache__"}
 # Ở gốc home chỉ đi vào thư mục ẩn này (repo cấu hình); các thư mục ẩn khác là dữ liệu/cache của tool.
 WALK_HIDDEN_OK = {".config"}
 INSTALLER_EXT = (".dmg", ".pkg", ".mpkg", ".xip", ".iso")
-BACKUP_MARK = re.compile(r"(?i)(\.bak|\.backup|\.old|\.orig|\.prev|[_-]backup|~$)")
+# Dấu backup phải kết thúc tại đó (".bak", ".bak.2", "-backup.zip", "_backup 2"); chữ cái hay "(" đi liền sau là tên riêng
+# ("make-backupURL().md", "list_backups().md", "file.original.png") chứ không phải bản sao lưu.
+BACKUP_MARK = re.compile(r"(?i)((\.bak|\.backup|\.old|\.orig|\.prev|[_-]backup)(?![a-z(])|~$)")
 BACKUP_FIND = ["*.bak", "*.bak[0-9]*", "*.bak.*", "*.backup", "*.backup.*", "*.backup-*", "*.old", "*.orig",
                "*~", "*_backup*", "*-backup*", "*.prev"]
 BACKUP_SKIP = ("/opt/homebrew/Cellar/", "/Library/Ruby/", "/node_modules/", "/build/", "/DerivedData/",
@@ -66,6 +68,11 @@ BACKUP_SKIP_RE = re.compile(r"/\.[^/]+/extensions/"  # extension của editor: b
                             r"|Extension State|Sync App Settings)/")  # kho nội bộ của trình duyệt/Electron: .bak/.old là file CSDL, không phải backup của người dùng
 BROWSERS = {"Google Chrome": "Google/Chrome", "Microsoft Edge": "Microsoft Edge", "Brave": "BraveSoftware/Brave-Browser",
             "Arc": "Arc/User Data", "Chromium": "Chromium", "Vivaldi": "Vivaldi", "Opera": "com.operasoftware.Opera"}
+# Thùng rác đổi tên mục trùng tên thành "<tên> HH-MM-SS-mmm"; "Đưa trở lại" trả mục về chỗ cũ dưới tên đó — bản mồ côi
+# nằm cạnh bản gốc (Caches 11-16-47-123, Pods 11-16-47-630…), không app/dự án nào còn dùng.
+TRASH_RENAMED = re.compile(r"^(.+) \d{2}-\d{2}-\d{2}-\d{3}$")
+TRASH_NOTABLE = 2 ** 20  # Thùng rác dưới 1 MB (.DS_Store…) coi như trống
+UUID_RE = re.compile(r"^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$")
 PLUGIN_DIRS = ["Internet Plug-Ins", "Audio/Plug-Ins/Components", "Audio/Plug-Ins/VST", "Audio/Plug-Ins/VST3",
                "Audio/Plug-Ins/HAL", "QuickLook", "Spotlight", "PreferencePanes", "Input Methods", "Services",
                "Screen Savers", "Contextual Menu Items", "Application Support/Adobe/Plug-Ins"]
@@ -88,6 +95,12 @@ def children(d):
         return [os.path.join(d, n) for n in sorted(os.listdir(d)) if n != ".DS_Store"]
     except OSError:
         return []
+
+
+def trash_stem(name):
+    """Tên gốc của mục bị Thùng rác đổi tên ("Pods 11-16-47-630" → "Pods"), hoặc None."""
+    m = TRASH_RENAMED.match(name)
+    return m.group(1) if m else None
 
 
 # ---------- applications ----------
@@ -247,7 +260,8 @@ def walk_home(roots=None, log=None):
                 p = os.path.join(d, n)
                 if os.path.islink(p) or n.endswith((".app", ".framework", ".photoslibrary", ".xcarchive")):
                     continue
-                if n in ARTIFACT_DIRS or (n in MARKED_ARTIFACTS and any(f in files for f in PROJECT_MARKERS)):
+                stem = trash_stem(n) or n  # bản bị Thùng rác đổi tên của một build artifact: báo như artifact, không đi vào
+                if stem in ARTIFACT_DIRS or (stem in MARKED_ARTIFACTS and any(f in files for f in PROJECT_MARKERS)):
                     if not rel_hidden:
                         artifacts.append(p)
                     continue
@@ -289,7 +303,7 @@ def scan_git(repos):
 
 
 # ---------- caches ----------
-def scan_caches():
+def scan_caches(running=None):
     items = []
     lib = os.path.join(HOME, "Library")
     for p in children(os.path.join(lib, "Caches")):
@@ -345,6 +359,12 @@ def scan_caches():
             continue
         items.append(item("caches", "dev-cache", Path(p).name, p, owner=Path(p).name, safety="review", action="trash",
                           note="cache của công cụ CLI"))
+    # Cache của app đang chạy (thư mục mang bundle id, tên app hay tên hãng): chỉ liệt kê — `clean` cũng kiểm lại lúc dọn.
+    running = (running_bundle_ids() | running_names()) if running is None else running
+    for it in items:
+        if it["kind"] in ("user-cache", "container-cache") and it["safety"] in CLEANABLE and cache_owner_running(it["path"], running):
+            it.update(safety="info", action=None, running=True,
+                      note="app đang chạy — đóng app rồi quét lại" + (f" · {it['note']}" if it["note"] else ""))
     return items
 
 
@@ -407,7 +427,15 @@ def find_backups(log=None):
 
 def scan_junk(artifacts, installers, backups, bundle_ids):
     items = []
+    in_lib = trash_renamed_in_library()
+    for p in [p for p in artifacts if trash_stem(Path(p).name)] + in_lib:
+        items.append(item("junk", "trash-renamed", Path(p).name, p, safety="review", action="trash",
+                          owner=p[len(HOME):].split("/")[3] if p in in_lib else Path(p).parent.name,  # container | dự án
+                          note=f"bản “{trash_stem(Path(p).name)}” từng vào Thùng rác, bị đổi tên vì trùng tên rồi được đưa trở lại chỗ cũ"
+                               " — không app/dự án nào dùng tên này; xem qua rồi xoá"))
     for p in artifacts:
+        if trash_stem(Path(p).name):
+            continue
         d = idle_days(p)
         recent = d is not None and d < ARTIFACT_RECENT_DAYS
         items.append(item("junk", "build-artifact", Path(p).name, p, owner=Path(p).parent.name,
@@ -446,10 +474,13 @@ def scan_junk(artifacts, installers, backups, bundle_ids):
         return spotlight[b] is False
     for p in children(os.path.join(lib, "Containers")) + children(os.path.join(lib, "Group Containers")):
         n = Path(p).name
-        bid = n.split(".", 1)[1] if re.match(r"^[A-Z0-9]{10}\.", n) else n
-        if leftover(bid, p):
-            items.append(item("junk", "app-leftover", n, p, owner=bid, safety="review", action="trash",
-                              note=f"không thấy app nào có bundle id này (kể cả qua Spotlight), {ORPHAN_MIN_IDLE_DAYS}+ ngày không dùng"))
+        by_uuid = bool(UUID_RE.match(n))  # container đặt tên bằng UUID (app iOS chạy trên Mac…): bundle id nằm trong metadata
+        bid = container_bundle_id(p) if by_uuid else n.split(".", 1)[1] if re.match(r"^[A-Z0-9]{10}\.", n) else n
+        if bid and leftover(bid, p):
+            note = f"không thấy app nào có bundle id này (kể cả qua Spotlight), {ORPHAN_MIN_IDLE_DAYS}+ ngày không dùng"
+            if by_uuid:
+                note = f"container của {bid} (thư mục mang tên UUID) — {note}; có thể chứa dữ liệu của app (bản lưu, tài liệu): bạn tự quyết"
+            items.append(item("junk", "app-leftover", n, p, owner=bid, safety="review", action="trash", note=note))
     for p in children(os.path.join(lib, "Preferences")):
         n = Path(p).name
         if n.endswith(".plist") and leftover(n[:-6], p):
@@ -468,6 +499,34 @@ def scan_junk(artifacts, installers, backups, bundle_ids):
     items.append(item("junk", "trash", "Thùng rác", trash, owner="Finder",
                       note="đổ bằng Finder; terminal cần Full Disk Access để đo"))
     return items
+
+
+def trash_renamed_in_library():
+    """Thư mục `<tên> HH-MM-SS-mmm` trong Data/Library của container (cạnh Caches, Logs…): bản bị Thùng rác đổi tên rồi
+    được đưa trở lại — app chỉ dùng thư mục mang tên gốc."""
+    lib = os.path.join(HOME, "Library")
+    dirs = [os.path.join(c, "Data", "Library") for c in children(os.path.join(lib, "Containers"))]
+    dirs += [os.path.join(c, "Library") for c in children(os.path.join(lib, "Group Containers"))]
+    return [p for d in dirs for p in children(d) if trash_stem(Path(p).name) and os.path.isdir(p) and not os.path.islink(p)]
+
+
+def container_bundle_id(path):
+    """Bundle id của app sở hữu container, theo metadata do containermanagerd ghi ("" nếu không đọc được)."""
+    v = plist(os.path.join(path, ".com.apple.containermanagerd.metadata.plist")).get("MCMMetadataIdentifier")
+    return v if isinstance(v, str) else ""
+
+
+def trash_state(size):
+    """(đo được?, ghi chú) cho mục Thùng rác: mục đã dọn nằm ở đó cho tới khi đổ — dọn xong ổ chưa trống thêm."""
+    try:
+        os.listdir(os.path.join(HOME, ".Trash"))
+    except FileNotFoundError:
+        return True, "trống"
+    except OSError:
+        return False, "không đo được — terminal cần Full Disk Access; đổ bằng Finder"
+    if (size or 0) >= TRASH_NOTABLE:
+        return True, f"đang giữ {fmt(size)} — mục đã dọn nằm ở đây, ổ chỉ trống thêm khi đổ Thùng rác (Finder)"
+    return True, "trống"
 
 
 def spotlight_has_app(bid):
@@ -526,21 +585,35 @@ def scan(log=print, features=None):
     sizes = du([i["path"] for i in items if i["kind"] not in ("binary", "repo", "app-extension")], log=log)
     git_sizes = du([os.path.join(i["path"], ".git") for i in items if i["kind"] == "repo"], log=log)
     log(f"  ✓ {time.time() - t:.1f}s")
+    trash = dict(size=None, measured=False)
     for i in items:
         i["size"] = git_sizes.get(os.path.join(i["path"], ".git")) if i["kind"] == "repo" else sizes.get(i["path"])
+        if i["kind"] == "trash":
+            measured, i["note"] = trash_state(i["size"])
+            trash = dict(size=(i["size"] or 0) if measured else None, measured=measured)
     feats = registry.collect_all(registry.ReportContext(items=items, log=log),
                                  registry.discover() if features is None else features)
     usage = shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/")
     log(f"✓ Quét xong: {len(items)} mục trong {time.time() - t0:.0f}s")
     return dict(generatedAt=int(time.time() * 1000), version=mclib.__version__, host=os.uname().nodename, home=HOME,
-                disk=dict(total=usage.total, used=usage.used, free=usage.free),
+                disk=dict(total=usage.total, used=usage.used, free=usage.free), trash=trash,
                 seconds=round(time.time() - t0, 1), items=items, features=feats)
+
+
+def trash_line(rep):
+    """Dòng báo Thùng rác đang giữ bao nhiêu (dọn = chuyển vào Thùng rác: chưa giải phóng ổ cho tới khi đổ)."""
+    t = rep.get("trash") or {}
+    if not t.get("measured"):
+        return ["Thùng rác: không đo được (terminal cần Full Disk Access) — mục đã dọn vẫn chiếm ổ cho tới khi đổ Thùng rác.", ""]
+    if (t.get("size") or 0) < TRASH_NOTABLE:
+        return []
+    return [f"Thùng rác đang giữ {fmt(t['size'])} — mục đã dọn nằm ở đó, ổ chỉ trống thêm khi đổ Thùng rác.", ""]
 
 
 def to_markdown(rep):
     lines = [f"# Mac cleaner report · {time.strftime('%Y-%m-%d %H:%M', time.localtime(rep['generatedAt'] / 1000))}", "",
              f"Đĩa: dùng {fmt(rep['disk']['used'])} / {fmt(rep['disk']['total'])}, trống {fmt(rep['disk']['free'])}. "
-             f"Quét {rep['seconds']}s, {len(rep['items'])} mục.", "",
+             f"Quét {rep['seconds']}s, {len(rep['items'])} mục.", ""] + trash_line(rep) + [
              "| Nhóm | Số mục | Dung lượng | Dọn an toàn | Cân nhắc |", "|---|---:|---:|---:|---:|"]
     by = defaultdict(list)
     for i in rep["items"]:
@@ -654,12 +727,17 @@ def main(argv=None):
         res["freed"] += fres["freed"]
         chosen = chosen + fchosen
     res["freeBefore"], res["freeAfter"] = before, shutil.disk_usage(DATA_VOL if os.path.isdir(DATA_VOL) else "/").free
+    if a.yes:  # dọn = chuyển vào Thùng rác: ổ chưa trống thêm cho tới khi đổ — báo luôn đang chờ bao nhiêu
+        tp = os.path.join(HOME, ".Trash")
+        res["trash"] = du([tp]).get(tp)
     if a.json:
         print(json.dumps(res, ensure_ascii=False))
     else:
         mode = ("Đã xoá vĩnh viễn" if a.mode == "permanent" else "Đã dọn") if a.yes else "Preview (thêm --yes để dọn)"
         print(f"{mode}: {sum(r['status'] in ('ok', 'dry-run') for r in res['results'])}/{len(chosen)} mục, ~{fmt(res['freed'])}"
               + (f" · trống {fmt(before)} → {fmt(res['freeAfter'])} · log {res['log']}" if a.yes else ""))
+        if a.yes and (res["trash"] or 0) >= TRASH_NOTABLE:
+            print(f"Thùng rác đang giữ {fmt(res['trash'])} — ổ chỉ trống thêm khi đổ Thùng rác (Finder › Đổ Thùng rác).")
     return 0
 
 

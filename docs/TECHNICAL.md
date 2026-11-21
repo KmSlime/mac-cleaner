@@ -112,6 +112,22 @@ Features in `mclib/features/` also read:
 - `codesign -dv` / the quarantine flag (persistence audit), the user's TCC.db (privacy), Spotlight
   `kMDItemLastUsedDate` (apps not opened for long), Sparkle appcasts + `brew outdated --cask` + `softwareupdate -l`
   (updates), `st_blocks` / `SF_DATALESS` (space, cloud).
+- System-level leftovers (`junk`, kinds `os-installer`, `system-leftover`, `os-assets`; all `inventory` + `list-only`, never
+  cleaned): `<data volume>/macOS Install Data` and `/Applications/Install macOS*.app`; folders of
+  `/Library/Application Support` whose vendor has no app, plugin or launchd job left (Spotlight asked by bundle id, apps
+  inside the folder itself do not count, written within 30 days → kept, Spotlight error → kept); unknown hidden folders
+  at the data volume root idle for 180 days; children of `/System/Library/AssetsV2` from 1 GB. A tree the current user
+  cannot read is reported with `unreadable: true` instead of a wrong size.
+- Trash-renamed folders (`junk/trash-renamed`, `review`): the Trash renames a colliding item to `<name> HH-MM-SS-mmm`
+  and "Put Back" restores it under that name, so a clean that was undone leaves e.g. `Caches 11-16-47-123` beside the
+  live `Caches`. Looked for in `Containers/*/Data/Library`, `Group Containers/*/Library`, and among build-artifact names
+  while walking `~`.
+- Containers named by a UUID (iOS apps on a Mac): the owner comes from `MCMMetadataIdentifier` in
+  `.com.apple.containermanagerd.metadata.plist`, then the usual orphan test applies.
+- Running apps (`safety.running_names`): bundle id, `.app` name, `CFBundleName`, `CFBundleExecutable`. A cache folder
+  belongs to a running app when it carries one of those, the vendor label of a bundle id (`com.google.Chrome` →
+  `Google`) or the first word of an app name. `scan` lists such caches as `info` (`running: true`); `clean` checks again.
+- The Trash: `report["trash"] = {size, measured}`; `clean --yes --json` adds `trash` (bytes waiting there).
 
 Comparison with CleanMyMac: [CLEANMYMAC-PARITY.md](CLEANMYMAC-PARITY.md).
 
