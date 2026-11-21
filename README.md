@@ -198,6 +198,8 @@ Mỗi mục được xếp vào một trong bốn mức:
 
 **Chỉ báo, không dọn** (từ 1.13.0, khu *Rác hệ thống* và bảng *Cần bạn quyết* của phân loại): gói cài/cập nhật macOS bị bỏ lại ở gốc ổ (`macOS Install Data`, `Install macOS *.app`), dữ liệu cấp hệ thống của hãng không còn app nào trên máy (`/Library/Application Support/<hãng>`, thư mục ẩn lạ ở gốc ổ) và asset macOS tự tải (`/System/Library/AssetsV2`). Những thứ này cần quyền admin hoặc do macOS quản lý — Mac Cleaner không dùng `sudo`, nên chỉ nêu đường dẫn, dung lượng và lý do để bạn tự quyết.
 
+**Chỉ quét ổ của máy**: lượt quét không đi vào ổ rời, ổ mạng hay ảnh đĩa đang gắn (kể cả khi chúng được gắn bên trong thư mục home).
+
 **Thùng rác**: dọn = chuyển vào Thùng rác, nên ổ chưa trống thêm cho tới khi bạn đổ. Report, bảng phân loại, trang Tổng quan và kết quả `clean --yes` đều ghi Thùng rác đang giữ bao nhiêu.
 
 ### Không bao giờ xoá được

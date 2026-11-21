@@ -97,6 +97,14 @@ def children(d):
         return []
 
 
+def device_of(path):
+    """Thiết bị (volume) chứa path; None nếu không đọc được."""
+    try:
+        return os.lstat(path).st_dev
+    except OSError:
+        return None
+
+
 def trash_stem(name):
     """Tên gốc của mục bị Thùng rác đổi tên ("Pods 11-16-47-630" → "Pods"), hoặc None."""
     m = TRASH_RENAMED.match(name)
@@ -247,6 +255,7 @@ def walk_home(roots=None, log=None):
     repos, artifacts, installers = [], [], []
     last, t0, seen = time.time(), time.time(), 0
     for root in roots or [HOME]:
+        dev = device_of(root)  # chỉ quét trong volume của máy: thư mục là điểm gắn của ổ khác (ổ rời, ổ mạng, ảnh đĩa) → không đi vào
         for d, dirs, files in os.walk(root):
             seen += 1
             if log and time.time() - last >= 3:
@@ -259,6 +268,8 @@ def walk_home(roots=None, log=None):
             for n in dirs:
                 p = os.path.join(d, n)
                 if os.path.islink(p) or n.endswith((".app", ".framework", ".photoslibrary", ".xcarchive")):
+                    continue
+                if device_of(p) != dev:
                     continue
                 stem = trash_stem(n) or n  # bản bị Thùng rác đổi tên của một build artifact: báo như artifact, không đi vào
                 if stem in ARTIFACT_DIRS or (stem in MARKED_ARTIFACTS and any(f in files for f in PROJECT_MARKERS)):
